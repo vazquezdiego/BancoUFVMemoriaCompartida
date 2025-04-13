@@ -1,0 +1,21 @@
+# Límites de Operaciones
+LIMITE_RETIRO=5000
+LIMITE_TRANSFERENCIA=10000
+
+# Umbrales de Detección de Anomalías
+UMBRAL_RETIROS=3
+UMBRAL_TRANSFERENCIAS=5
+
+# Parámetros de Ejecución
+NUM_HILOS=4
+ARCHIVO_CUENTAS=cuentas.txt
+ARCHIVO_LOG=banco.log
+ARCHIVO_TRANSACCIONES=transacciones.log
+
+#rutas de usuario
+RUTA_USUARIO=/home/vboxuser/Documents/UFV-SecureBankMemoriaCompartida/usuario
+RUTA_CREARUSUARIO=/home/vboxuser/Documents/UFV-SecureBankMemoriaCompartida/crearusuario
+RUTA_MONITOR=/home/vboxuser/Documents/UFV-SecureBankMemoriaCompartida/monitor
+
+#Numero máximo usuario
+MAX_USUARIOS=4
