@@ -4,6 +4,11 @@
 // +------------------------------------------------------------------------------------------------------------------------------+*
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 struct Cuenta {
     int numero_cuenta;
@@ -38,6 +43,21 @@ void InitCuentas(const char *nombreArchivo) {
         }
         
         fclose(archivo);
+
+        for(int i = 0; i < 3; i++) {
+            char path[100];
+            snprintf(path, sizeof(path), "./transacciones/%d", cuentas[i].numero_cuenta);
+            mkdir(path, 0777);
+            char rutaArchivo[100];
+            snprintf(rutaArchivo, sizeof(rutaArchivo), "./transacciones/%d/transacciones.log", cuentas[i].numero_cuenta);
+            // Creamos el archivo con la ruta especificada
+            FILE *archivoTransacciones = fopen(rutaArchivo, "w");
+            if (!archivoTransacciones) {
+                perror("Error al crear el archivo de transacciones");
+                return;
+            }
+            fclose(archivoTransacciones);
+        }
         printf("Cuentas inicializadas correctamente en %s.\n", nombreArchivo);
     }
     

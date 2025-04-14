@@ -31,7 +31,8 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
-#define SHM_SIZE sizeof(int)
+
+
 
 // Archivos.c Necesarios
 #include "Usuarios.h"
@@ -42,9 +43,11 @@
 #include "Monitor.h"
 #include "Usuarios.h"
 
+// Variables globales
 Config configuracion;
 Cuenta cuenta;
 TablaCuentas tablaCuentas;
+
 
 void EscribirEnLog(const char *mensaje)
 {
@@ -59,6 +62,8 @@ void EscribirEnLog(const char *mensaje)
 
     fclose(archivoLog);
 }
+
+
 
 // Como llamamos a la funcion de obtener la fecha y la hora
 // ObtenerFechaHora(FechaHora, sizeof(FechaHora));
@@ -190,7 +195,7 @@ void *MostrarMenu(void *arg)
                     break;
                 }
             }
-            // Si no encontramos ninguna cuenta con ese numeroCuenta, retornamos false
+
 
             if (cuentaExistente)
             {

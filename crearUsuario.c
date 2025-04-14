@@ -17,6 +17,11 @@
 #include "Config.h"
 #include "crearUsuario.h"
 #include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 
 void ObtenerFechaHora(char *buffer, size_t bufferSize)
 {
@@ -85,20 +90,29 @@ int main (int argc, char *argv[]) {
     printf("|   Usuario guardado con éxito.                        |\n");
     printf("+------------------------------------------------------+\n");
 
+
+    char path[100];
+    snprintf(path, sizeof(path), "./transacciones/%d",NumeroCuenta);
+    mkdir(path, 0777);
+    char rutaArchivo[100];
+    snprintf(rutaArchivo, sizeof(rutaArchivo), "./transacciones/%d/transacciones.log", NumeroCuenta);
+    // Creamos el archivo con la ruta especificada
+    FILE *archivoTransacciones = fopen(rutaArchivo, "w");
+    if (!archivoTransacciones) {
+        perror("Error al crear el archivo de transacciones");
+        return EXIT_FAILURE;
+    }
+    fclose(archivoTransacciones);
+
+
     char FechaFinCuenta[148];
     char MensajeDeSalida[256];
     ObtenerFechaHora(FechaFinCuenta, sizeof(FechaFinCuenta));
     snprintf(MensajeDeSalida, sizeof(MensajeDeSalida), "[%s] Cierre de sesión de creación de cuenta: %s\n", FechaFinCuenta, argv[1]);
     EscribirEnLog(MensajeDeSalida, archivoLog);
 
+return 0;
+
 }
 
 
-    /*FILE *archivo = fopen(archivoEscritura, "a");
-    if (archivo == NULL) {
-        perror("Error al abrir el archivo de cuentas");
-        return;
-    }
-
-    fprintf(archivo, "%d,%s,0.00,0\n", IdCuenta, Nombre);
-    fclose(archivo);*/

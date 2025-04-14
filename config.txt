@@ -13,9 +13,9 @@ ARCHIVO_LOG=banco.log
 ARCHIVO_TRANSACCIONES=transacciones.log
 
 #rutas de usuario
-RUTA_USUARIO=/home/vboxuser/Documents/UFV-SecureBankMemoriaCompartida/usuario
-RUTA_CREARUSUARIO=/home/vboxuser/Documents/UFV-SecureBankMemoriaCompartida/crearusuario
-RUTA_MONITOR=/home/vboxuser/Documents/UFV-SecureBankMemoriaCompartida/monitor
+RUTA_USUARIO=/home/vboxuser/Documents/BancoUFVMemoriaCompartida/usuario
+RUTA_CREARUSUARIO=/home/vboxuser/Documents/BancoUFVMemoriaCompartida/crearusuario
+RUTA_MONITOR=/home/vboxuser/Documents/BancoUFVMemoriaCompartida/monitor
 
 #Numero máximo usuario
 MAX_USUARIOS=4

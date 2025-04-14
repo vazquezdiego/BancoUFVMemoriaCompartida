@@ -29,7 +29,8 @@
 #include <sys/shm.h>
 
 
-
+//variables globales
+sem_t *semaforo_transacciones;
 
 typedef struct
 {
@@ -69,7 +70,7 @@ void *Depositar(void *arg)
     // Variables
     float cantidad;
     char FechaHora[20]; // Para almacenar la fecha y la hora
-    char mensaje[256];
+    char rutaLog[100];
 
     ArgsHilo *args = (ArgsHilo *)arg;
 
@@ -84,6 +85,16 @@ void *Depositar(void *arg)
     args->tabla->cuenta[args->posicionCuenta].saldo += cantidad;
     args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
 
+    // Escribimos en el log
+    // Usamos semaforo para controlar el acceso
+    sem_wait(semaforo_transacciones);
+    snprintf(rutaLog, sizeof(rutaLog), "./transacciones/%d/transacciones.log", args->tabla->cuenta[args->posicionCuenta].numero_cuenta);
+    ObtenerFechaHora(FechaHora, sizeof(FechaHora));
+    FILE *log = fopen(rutaLog, "a");
+    fprintf(log, "[%s] Deposito: +%.2f\n", FechaHora, cantidad);
+    fclose(log);
+    sem_post(semaforo_transacciones);
+
 
     printf("Deposito realizado con éxito. Nuevo saldo: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
     return NULL;
@@ -95,7 +106,7 @@ void *Retirar(void *arg)
     // Variables
     float cantidad;
     char FechaHora[20]; // Para almacenar la fecha y la hora
-    char mensaje[256];
+    char rutaLog[100];
 
     ArgsHilo *args = (ArgsHilo *)arg;
 
@@ -113,9 +124,19 @@ void *Retirar(void *arg)
         args->tabla->cuenta[args->posicionCuenta].saldo -= cantidad;
         args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
 
-        // escribimos el mensaje
+        // escribimos en el log
+        // Semaforo para controlar el acceso
+        sem_wait(semaforo_transacciones);
+
         ObtenerFechaHora(FechaHora, sizeof(FechaHora));
+        snprintf(rutaLog, sizeof(rutaLog), "./transacciones/%d/transacciones.log", args->tabla->cuenta[args->posicionCuenta].numero_cuenta);
+        FILE *log = fopen(rutaLog, "a");
+        fprintf(log, "[%s] Retiro: -%.2f\n", FechaHora, cantidad);
+        fclose(log);
         printf("Retiro realizado con éxito. Nuevo saldo: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
+
+        sem_post(semaforo_transacciones);
+        
     }
     else
     {
@@ -143,7 +164,7 @@ void *Transferencia(void *arg)
     int posicionCuentaDestino;
     float cantidad;
     char FechaHora[20]; // Para almacenar la fecha y la hora
-    char mensaje[256];
+    char rutaLog[100];
 
     // Leemos los datos de la cuenta destino y la cantidad a transferir
     printf("Ingrese el número de cuenta destino: ");
@@ -181,6 +202,16 @@ void *Transferencia(void *arg)
         args->tabla->cuenta[posicionCuentaDestino].saldo += cantidad;
         args->tabla->cuenta[posicionCuentaDestino].num_transacciones++;
 
+        // Escribimos en el log de la cuenta origen
+        // Usamos semaforo para controlar el acceso al log
+        sem_wait(semaforo_transacciones);
+        ObtenerFechaHora(FechaHora, sizeof(FechaHora));
+        snprintf(rutaLog, sizeof(rutaLog), "./transacciones/%d/transacciones.log", args->tabla->cuenta[args->posicionCuenta].numero_cuenta);
+        FILE *log = fopen(rutaLog, "a");
+        fprintf(log, "[%s] Transferencia a cuenta %d: -%.2f\n", FechaHora, cuentaDestino, cantidad);
+        fclose(log);
+        sem_post(semaforo_transacciones);
+
         printf("Transferencia realizada con éxito. Nuevo saldo: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
     }
     else
@@ -211,6 +242,13 @@ pid_t get_terminal_pid()
 
 int main(int argc, char *argv[])
 {
+
+    semaforo_transacciones = sem_open("/semaforo_transacciones", O_CREAT, 0666, 1);
+    if (semaforo_transacciones == SEM_FAILED)
+    {
+        perror("Error al abrir el semáforo");
+        exit(EXIT_FAILURE);
+    }
 
     // parametros de entrada
     const char *archivoLog = argv[1];
@@ -245,7 +283,7 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        ArgsHilo args = {archivoLog, tabla, PosicionCuenta, &mutex};
+        ArgsHilo args = {archivoLog, tabla, PosicionCuenta};
 
         // Con las opciones creamos los hilos, y hacemos que esperen a que terminen
         switch (opcion)
