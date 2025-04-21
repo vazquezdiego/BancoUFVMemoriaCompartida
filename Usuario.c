@@ -32,6 +32,9 @@
 //variables globales
 sem_t *semaforo_transacciones;
 
+// Definimos un mutex para controlar las operaciones que realizan los usuarios
+pthread_mutex_t mutex_u = PTHREAD_MUTEX_INITIALIZER;
+
 typedef struct
 {
     const char *archivoLog;
@@ -72,6 +75,9 @@ void *Depositar(void *arg)
     char FechaHora[20]; // Para almacenar la fecha y la hora
     char rutaLog[100];
 
+    // Bloqueamos el mutex para evitar condiciones de carrera
+    pthread_mutex_lock(&mutex_u);
+
     ArgsHilo *args = (ArgsHilo *)arg;
 
     printf("Ingrese la cantidad que quiere depositar: ");
@@ -97,6 +103,9 @@ void *Depositar(void *arg)
 
 
     printf("Deposito realizado con éxito. Nuevo saldo: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
+
+    // Desbloqueamos el mutex
+    pthread_mutex_unlock(&mutex_u);
     return NULL;
 }
 
@@ -108,12 +117,18 @@ void *Retirar(void *arg)
     char FechaHora[20]; // Para almacenar la fecha y la hora
     char rutaLog[100];
 
+    // Bloqueamos el mutex para evitar condiciones de carrera
+    pthread_mutex_lock(&mutex_u);
+
     ArgsHilo *args = (ArgsHilo *)arg;
 
     printf("Ingrese la cantidad a retirar: ");
     if (scanf("%f", &cantidad) != 1 || cantidad <= 0)
     {
         printf("Cantidad inválida\n");
+
+        // Desbloqueamos el mutex
+        pthread_mutex_unlock(&mutex_u);
 
         return NULL;
     }
@@ -143,20 +158,32 @@ void *Retirar(void *arg)
         printf("Fondos insuficientes\n");
     }
 
+    // Desbloqueamos el mutex
+    pthread_mutex_unlock(&mutex_u);
+
     return NULL;
 }
 
 // Consultar el saldo de la cuenta
 void *ConsultarSaldo(void *arg)
 {
+    // Bloqueamos el mutex para evitar condiciones de carrera
+    pthread_mutex_lock(&mutex_u);
+
     ArgsHilo *args = (ArgsHilo *)arg;
     printf("Saldo actual: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
+
+    // Desbloqueamos el mutex
+    pthread_mutex_unlock(&mutex_u);
+
     return NULL;
 }
 
 // Realizar transacción a otra cuenta
 void *Transferencia(void *arg)
 {
+    // Bloqueamos el mutex para evitar condiciones de carrera
+    pthread_mutex_lock(&mutex_u);
 
     ArgsHilo *args = (ArgsHilo *)arg;
 
@@ -171,6 +198,9 @@ void *Transferencia(void *arg)
     if (scanf("%d", &cuentaDestino) != 1)
     {
         perror("Número de cuenta inválido");
+
+        // Desbloqueamos el mutex antes de salir
+        pthread_mutex_unlock(&mutex_u);
         return NULL;
     }
 
@@ -188,6 +218,9 @@ void *Transferencia(void *arg)
     if (scanf("%f", &cantidad) != 1 || cantidad <= 0)
     {
         printf("Cantidad inválida\n");
+
+        // Desbloqueamos el mutex antes de salir
+        pthread_mutex_unlock(&mutex_u);
 
         return NULL;
     }
@@ -218,6 +251,9 @@ void *Transferencia(void *arg)
     {
         printf("Fondos insuficientes\n");
     }
+
+    // Desbloqueamos el mutex antes de salir
+    pthread_mutex_unlock(&mutex_u);
     sleep(28);
 }
 
@@ -242,6 +278,7 @@ pid_t get_terminal_pid()
 
 int main(int argc, char *argv[])
 {
+    pthread_mutex_init(&mutex_u, NULL);
 
     semaforo_transacciones = sem_open("/semaforo_transacciones", O_CREAT, 0666, 1);
     if (semaforo_transacciones == SEM_FAILED)
@@ -312,6 +349,8 @@ int main(int argc, char *argv[])
             snprintf(MensajeDeSalida, sizeof(MensajeDeSalida), "[%s] Cierre de sesión de cuenta: %d\n", FechaFinCuenta, tabla->cuenta[PosicionCuenta].numero_cuenta);
             EscribirEnLog(MensajeDeSalida, archivoLog);
 
+            pthread_mutex_destroy(&mutex_u);
+
             // Cierra la terminal que ejecutó el proceso (en la mayoría de casos)
             pid_t terminalPid = getppid();
             kill(terminalPid, SIGKILL);
@@ -321,6 +360,8 @@ int main(int argc, char *argv[])
             printf("Opción no válida\n");
         }
     } while (opcion != 5);
+
+    pthread_mutex_destroy(&mutex_u);
 
     return EXIT_SUCCESS;
 }
