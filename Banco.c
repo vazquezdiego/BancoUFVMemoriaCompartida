@@ -151,6 +151,25 @@ Config leer_configuracion(const char *ruta)
     return config;
 }
 
+// void *MostrarMonitor(void *arg)
+// {
+
+//     pid_t pidMonitor;
+//     pidMonitor = fork();
+//     if (pidMonitor == 0)
+//     {
+//         const char *rutaMonitor             pid_t terminalPid = getppid();
+//         snprintf(comandoMonitor, sizeof(comandoMonitor), "%s %d %d %s", rutaMonitor, configuracion.umbral_retiros, configuracion.umbral_transferencias, configuracion.archivo_transacciones);
+//         // Ejecutar gnome-terminal con el comando
+//         execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoMonitor, NULL);
+//     }
+//     else
+//     {
+//     }
+
+//     return NULL;
+// }
+
 
 void *MostrarMenu(void *arg)
 {
@@ -182,14 +201,22 @@ void *MostrarMenu(void *arg)
 
         if (numeroCuenta == 1)
         {
+            // obtenemos la fecha y hora
+            char FechaHora[20];
+            ObtenerFechaHora(FechaHora, sizeof(FechaHora));
+            // Escribimos en el log
+            char mensaje[100];
 
-            // Cierra la terminal que ejecutó el proceso (en la mayoría de casos)
-            pid_t terminalPid = getppid();
-            kill(terminalPid, SIGKILL);
-            exit(EXIT_SUCCESS);
+            snprintf(mensaje, sizeof(mensaje), "[%s] - El usuario ha salido del banco\n", FechaHora);
+            EscribirEnLog(mensaje);
+            printf("Saliendo del banco...\n");
+
+            int TerminarUsuario = system("kilall ./usuario");
+            int TerminarCrearUsuario = system("kilall ./crearUsuario");
+            int TerminarMonitor = system("kilall ./monitor");
+            int TerminarBanco = system("killall ./banco");
         }
-        else
-        {
+        else{
             for (int i = 0; i < tabla->num_cuentas; i++)
             {
                 if (tabla->cuenta[i].numero_cuenta == numeroCuenta)
@@ -269,6 +296,38 @@ void *MostrarMenu(void *arg)
 
     } while (numeroCuenta != 1);
 }
+
+
+// void *EscucharTuberiaMonitor(void *arg)
+// {
+//     int fdBancoMonitor;
+//     char mensaje[512];
+
+//     // Abrir la tubería FIFO para lectura
+//     fdBancoMonitor = open("fifo_bancoMonitor", O_RDONLY);
+//     if (fdBancoMonitor == -1)
+//     {
+//         EscribirEnLog("Error al abrir la tubería fifo_bancoMonitor");
+//         exit(EXIT_FAILURE);
+//     }
+
+//     while (1)
+//     {
+//         // Leer mensajes de la tubería
+//         int bytes_leidos = read(fdBancoMonitor, mensaje, sizeof(mensaje) - 1);
+//         if (bytes_leidos > 0)
+//         {
+//             mensaje[bytes_leidos] = '\0'; // Asegurar terminación de cadena
+//             printf("%s\n", mensaje);      // Mostrar el mensaje
+//         }
+//         else if (bytes_leidos == 0)
+//         {
+//             break; // Salir del bucle si no hay más datos
+//         }
+//     }
+
+//     close(fdBancoMonitor); // Cerrar la tubería
+// }
 
 int main()
 {
