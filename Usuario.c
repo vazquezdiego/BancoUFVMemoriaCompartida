@@ -28,12 +28,15 @@
 #include <errno.h>
 #include <sys/shm.h>
 
-
 //variables globales
 sem_t *semaforo_transacciones;
 
 // Definimos un mutex para controlar las operaciones que realizan los usuarios
 pthread_mutex_t mutex_u = PTHREAD_MUTEX_INITIALIZER;
+
+// El buffer y la tabla de cuentas
+BufferEstructurado buffer;
+TablaCuentas *tabla;
 
 typedef struct
 {
@@ -41,6 +44,8 @@ typedef struct
     TablaCuentas *tabla;
     int posicionCuenta;
 } ArgsHilo;
+
+
 
 void ObtenerFechaHora(char *buffer, size_t bufferSize)
 {
@@ -67,6 +72,23 @@ void EscribirEnLog(const char *mensaje, const char *archivoLog)
     fclose(archivo);
 }
 
+// Para utilizar el nuevo buffer y actualizar la cuenta
+void actualizar_cuenta(Cuenta cuenta_actualizada) {
+    // Primero escribe en la memoria compartida
+    for (int i = 0; i < tabla->num_cuentas; i++) {
+        if (tabla->cuenta[i].numero_cuenta == cuenta_actualizada.numero_cuenta) {
+            tabla->cuenta[i] = cuenta_actualizada;
+            break;
+        }
+    }
+    
+    // Luego escribe en disco encolando
+    pthread_mutex_lock(&buffer.mutex);
+    buffer.operaciones[buffer.fin] = cuenta_actualizada;
+    buffer.fin = (buffer.fin + 1) % 10;
+    pthread_mutex_unlock(&buffer.mutex);
+}
+
 // Depositar dinero en la cuenta, usándo semáforos para los hilos y guardando las modificaciones en el archivo
 void *Depositar(void *arg)
 {
@@ -90,6 +112,9 @@ void *Depositar(void *arg)
     // Sumamos la cantidad al saldo, y suma el número de transacciones
     args->tabla->cuenta[args->posicionCuenta].saldo += cantidad;
     args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
+
+    //Actualizamos la cuenta
+    actualizar_cuenta(args->tabla->cuenta[args->posicionCuenta]);
 
     // Escribimos en el log
     // Usamos semaforo para controlar el acceso
@@ -139,6 +164,10 @@ void *Retirar(void *arg)
         args->tabla->cuenta[args->posicionCuenta].saldo -= cantidad;
         args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
 
+        //Actualizamos la cuenta
+        actualizar_cuenta(args->tabla->cuenta[args->posicionCuenta]);
+
+
         // escribimos en el log
         // Semaforo para controlar el acceso
         sem_wait(semaforo_transacciones);
@@ -172,6 +201,10 @@ void *ConsultarSaldo(void *arg)
 
     ArgsHilo *args = (ArgsHilo *)arg;
     printf("Saldo actual: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
+
+    //Actualizamos la cuenta
+    actualizar_cuenta(args->tabla->cuenta[args->posicionCuenta]);
+
 
     // Desbloqueamos el mutex
     pthread_mutex_unlock(&mutex_u);
@@ -234,6 +267,10 @@ void *Transferencia(void *arg)
         // Sumamos la cantidad al saldo de la cuenta destino
         args->tabla->cuenta[posicionCuentaDestino].saldo += cantidad;
         args->tabla->cuenta[posicionCuentaDestino].num_transacciones++;
+
+        //Actualizamos la cuenta
+        actualizar_cuenta(args->tabla->cuenta[args->posicionCuenta]);
+
 
         // Escribimos en el log de la cuenta origen
         // Usamos semaforo para controlar el acceso al log

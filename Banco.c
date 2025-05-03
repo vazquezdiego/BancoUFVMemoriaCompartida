@@ -43,10 +43,36 @@
 #include "Monitor.h"
 #include "Usuarios.h"
 
+
+
 // Variables globales
 Config configuracion;
 Cuenta cuenta;
 TablaCuentas tablaCuentas;
+BufferEstructurado buffer;
+
+// Para gestionar la entrada y salida de las operaciones
+void *GestionarES(void *arg) {
+    while (1) {
+        pthread_mutex_lock(&buffer.mutex);
+        
+        if (buffer.inicio != buffer.fin) {
+            Cuenta op = buffer.operaciones[buffer.inicio];
+            buffer.inicio = (buffer.inicio + 1) % 10;
+            
+            // Escribimos la operación en disco
+            FILE *archivo = fopen(configuracion.archivo_cuentas, "rb+");
+            if (archivo) {
+                fseek(archivo, op.numero_cuenta * sizeof(Cuenta), SEEK_SET);
+                fwrite(&op, sizeof(Cuenta), 1, archivo);
+                fclose(archivo);
+            }
+        }
+        
+        pthread_mutex_unlock(&buffer.mutex);
+    }
+    return NULL;
+}
 
 
 void EscribirEnLog(const char *mensaje)
@@ -125,25 +151,6 @@ Config leer_configuracion(const char *ruta)
     return config;
 }
 
-// void *MostrarMonitor(void *arg)
-// {
-
-//     pid_t pidMonitor;
-//     pidMonitor = fork();
-//     if (pidMonitor == 0)
-//     {
-//         const char *rutaMonitor = configuracion.ruta_monitor;
-//         char comandoMonitor[512];
-//         snprintf(comandoMonitor, sizeof(comandoMonitor), "%s %d %d %s", rutaMonitor, configuracion.umbral_retiros, configuracion.umbral_transferencias, configuracion.archivo_transacciones);
-//         // Ejecutar gnome-terminal con el comando
-//         execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoMonitor, NULL);
-//     }
-//     else
-//     {
-//     }
-
-//     return NULL;
-// }
 
 void *MostrarMenu(void *arg)
 {
@@ -263,43 +270,17 @@ void *MostrarMenu(void *arg)
     } while (numeroCuenta != 1);
 }
 
-// void *EscucharTuberiaMonitor(void *arg)
-// {
-//     int fdBancoMonitor;
-//     char mensaje[512];
-
-//     // Abrir la tubería FIFO para lectura
-//     fdBancoMonitor = open("fifo_bancoMonitor", O_RDONLY);
-//     if (fdBancoMonitor == -1)
-//     {
-//         EscribirEnLog("Error al abrir la tubería fifo_bancoMonitor");
-//         exit(EXIT_FAILURE);
-//     }
-
-//     while (1)
-//     {
-//         // Leer mensajes de la tubería
-//         int bytes_leidos = read(fdBancoMonitor, mensaje, sizeof(mensaje) - 1);
-//         if (bytes_leidos > 0)
-//         {
-//             mensaje[bytes_leidos] = '\0'; // Asegurar terminación de cadena
-//             printf("%s\n", mensaje);      // Mostrar el mensaje
-//         }
-//         else if (bytes_leidos == 0)
-//         {
-//             break; // Salir del bucle si no hay más datos
-//         }
-//     }
-
-//     close(fdBancoMonitor); // Cerrar la tubería
-// }
-
 int main()
 {
     pthread_t hilo_menu, hilo_pipes, hilo_monitor, hilo_escuchar;
     configuracion = leer_configuracion("config.txt");
     // Inicializamos las cuentas
     InitCuentas(configuracion.archivo_cuentas);
+
+    // Inicialiazamos el buffer y su mutex
+    buffer.inicio = 0;
+    buffer.fin = 0;
+    pthread_mutex_init(&buffer.mutex, NULL);
 
     char linea[256];
     int id_shmem;
@@ -321,6 +302,11 @@ int main()
         tabla->num_cuentas++;
     }
     fclose(archivo);
+
+    /// Creamos el hilo para escribir de forma asíncrona
+    pthread_t hilo_escritura;
+    pthread_create(&hilo_escritura, NULL, GestionarES, NULL);
+
 
     // Tuberias
     if (mkfifo("fifo_bancoMonitor", 0666) == -1 && errno != EEXIST)

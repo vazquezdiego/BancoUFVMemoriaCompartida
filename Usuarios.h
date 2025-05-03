@@ -12,7 +12,6 @@ void consultar_saldo(int cuenta);
 void ejecutar_menu_usuario();
 
 
-
 typedef struct
 {
     int numero_cuenta;
@@ -26,6 +25,14 @@ typedef struct
     Cuenta cuenta[100];
     int num_cuentas;
 } TablaCuentas;
+
+// Estructura del buffer
+typedef struct {
+    Cuenta operaciones[10];
+    int inicio;
+    int fin;
+    pthread_mutex_t mutex;
+} BufferEstructurado;
 
 extern TablaCuentas tablaCuentas;
 
