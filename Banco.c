@@ -31,9 +31,6 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
-
-
-
 // Archivos.c Necesarios
 #include "Usuarios.h"
 #include "Banco.h"
@@ -48,7 +45,6 @@ Config configuracion;
 Cuenta cuenta;
 TablaCuentas tablaCuentas;
 
-
 void EscribirEnLog(const char *mensaje)
 {
     FILE *archivoLog = fopen(configuracion.archivo_log, "a"); // "a" → Añadir al final
@@ -62,8 +58,6 @@ void EscribirEnLog(const char *mensaje)
 
     fclose(archivoLog);
 }
-
-
 
 // Como llamamos a la funcion de obtener la fecha y la hora
 // ObtenerFechaHora(FechaHora, sizeof(FechaHora));
@@ -125,25 +119,25 @@ Config leer_configuracion(const char *ruta)
     return config;
 }
 
-// void *MostrarMonitor(void *arg)
-// {
+void *MostrarMonitor(void *arg)
+{
 
-//     pid_t pidMonitor;
-//     pidMonitor = fork();
-//     if (pidMonitor == 0)
-//     {
-//         const char *rutaMonitor = configuracion.ruta_monitor;
-//         char comandoMonitor[512];
-//         snprintf(comandoMonitor, sizeof(comandoMonitor), "%s %d %d %s", rutaMonitor, configuracion.umbral_retiros, configuracion.umbral_transferencias, configuracion.archivo_transacciones);
-//         // Ejecutar gnome-terminal con el comando
-//         execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoMonitor, NULL);
-//     }
-//     else
-//     {
-//     }
+    pid_t pidMonitor;
+    pidMonitor = fork();
+    if (pidMonitor == 0)
+    {
+        const char *rutaMonitor = configuracion.ruta_monitor;
+        char comandoMonitor[512];
+        snprintf(comandoMonitor, sizeof(comandoMonitor), "%s %d %d %s", rutaMonitor, configuracion.umbral_retiros, configuracion.umbral_transferencias, configuracion.archivo_transacciones);
+        // Ejecutar gnome-terminal con el comando
+        execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoMonitor, NULL);
+    }
+    else
+    {
+    }
 
-//     return NULL;
-// }
+    return NULL;
+}
 
 void *MostrarMenu(void *arg)
 {
@@ -195,7 +189,6 @@ void *MostrarMenu(void *arg)
                     break;
                 }
             }
-
 
             if (cuentaExistente)
             {
@@ -263,36 +256,35 @@ void *MostrarMenu(void *arg)
     } while (numeroCuenta != 1);
 }
 
-// void *EscucharTuberiaMonitor(void *arg)
-// {
-//     int fdBancoMonitor;
-//     char mensaje[512];
+void *EscucharTuberiaMonitor(void *arg)
+{
+    int fdBancoMonitor;
+    char mensaje[512];
 
-//     // Abrir la tubería FIFO para lectura
-//     fdBancoMonitor = open("fifo_bancoMonitor", O_RDONLY);
-//     if (fdBancoMonitor == -1)
-//     {
-//         EscribirEnLog("Error al abrir la tubería fifo_bancoMonitor");
-//         exit(EXIT_FAILURE);
-//     }
+    // Abrir la tubería FIFO para lectura
+    fdBancoMonitor = open("fifo_bancoMonitor", O_RDONLY);
+    if (fdBancoMonitor == -1)
+    {
+        EscribirEnLog("Error al abrir la tubería fifo_bancoMonitor");
+        exit(EXIT_FAILURE);
+    }
 
-//     while (1)
-//     {
-//         // Leer mensajes de la tubería
-//         int bytes_leidos = read(fdBancoMonitor, mensaje, sizeof(mensaje) - 1);
-//         if (bytes_leidos > 0)
-//         {
-//             mensaje[bytes_leidos] = '\0'; // Asegurar terminación de cadena
-//             printf("%s\n", mensaje);      // Mostrar el mensaje
-//         }
-//         else if (bytes_leidos == 0)
-//         {
-//             break; // Salir del bucle si no hay más datos
-//         }
-//     }
-
-//     close(fdBancoMonitor); // Cerrar la tubería
-// }
+    while (1)
+    {
+        // Leer mensajes de la tubería
+        int bytes_leidos = read(fdBancoMonitor, mensaje, sizeof(mensaje) - 1);
+        if (bytes_leidos > 0)
+        {
+            mensaje[bytes_leidos] = '\0'; // Asegurar terminación de cadena
+            printf("%s\n", mensaje);      // Mostrar el mensaje
+        }
+        else if (bytes_leidos == 0)
+        {
+            break; // Salir del bucle si no hay más datos
+        }
+    }
+    close(fdBancoMonitor); // Cerrar la tubería
+}
 
 int main()
 {
@@ -330,12 +322,12 @@ int main()
     }
 
     // Crear los hilos
-    // pthread_create(&hilo_escuchar, NULL, EscucharTuberiaMonitor, NULL);
+    pthread_create(&hilo_escuchar, NULL, EscucharTuberiaMonitor, NULL);
     pthread_create(&hilo_menu, NULL, MostrarMenu, NULL);
-    // pthread_create(&hilo_monitor, NULL, MostrarMonitor, NULL);
+    pthread_create(&hilo_monitor, NULL, MostrarMonitor, NULL);
 
     pthread_join(hilo_menu, NULL);
-    // pthread_join(hilo_monitor, NULL);
-    // pthread_join(hilo_escuchar, NULL);
+    pthread_join(hilo_monitor, NULL);
+    pthread_join(hilo_escuchar, NULL);
     return 0;
 }

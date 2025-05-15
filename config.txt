@@ -10,7 +10,6 @@ UMBRAL_TRANSFERENCIAS=5
 NUM_HILOS=4
 ARCHIVO_CUENTAS=cuentas.txt
 ARCHIVO_LOG=banco.log
-ARCHIVO_TRANSACCIONES=transacciones.log
 
 #rutas de usuario
 RUTA_USUARIO=/home/vboxuser/Documents/BancoUFVMemoriaCompartida/usuario

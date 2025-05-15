@@ -1,122 +1,102 @@
 //+---------------------------------------------------------------------------------------------------------------------------------------------------+
-//  Nombre: Monitor.c                                                                                                        
-//  Descripción: Controla las transacciones que hay en el archivo de transacciones y envía alertas al banco si se superan los umbrales de operaciones.                                                                          
-//                                                                                              
+//  Nombre: Monitor.c
+//  Descripción: Controla las transacciones que hay en el archivo de transacciones y envía alertas al banco si se superan los umbrales de operaciones.
+//
 //+---------------------------------------------------------------------------------------------------------------------------------------------------+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <semaphore.h>
 #include <fcntl.h>
 
 #define MAX_TEXT 512
 
 int main(int argc, char *argv[])
 {
-
-    sem_t *semaforo_transacciones = sem_open("/semaforo_transacciones", O_CREAT, 0666, 1);
-    if (semaforo_transacciones == SEM_FAILED)
-    {
-        perror("Error al abrir semáforo");
+    if (argc < 4) {
+        fprintf(stderr, "Uso: %s <UmbralRetiros> <UmbralTransferencias> <archivoTransacciones>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
     int UmbralRetiros = atoi(argv[1]);
     int UmbralTransferencias = atoi(argv[2]);
     const char *archivoTransacciones = argv[3];
-    char TipoOperacion[20];
-    int cuenta;
-    int ContadorRetiros = 0;
-    int ContadorTransferencias = 0;
-    int cuentaTemporal = 0;
 
-    while (1)
-    {
-        sem_wait(semaforo_transacciones);
-
+    while (1) {
         FILE *file = fopen(archivoTransacciones, "r");
-        if (file == NULL)
-        {
+        if (file == NULL) {
             perror("Error al abrir el archivo de transacciones");
+            sleep(60);
+            continue; // Vuelve a intentarlo en el siguiente ciclo
         }
-        else
-        {
-            char linea[MAX_TEXT];
-            printf("Revisando transacciones en %s:\n", archivoTransacciones);
-            while (fgets(linea, sizeof(linea), file))
-            {
-                sscanf(linea, "[%*[^]]] %s en cuenta %d:", TipoOperacion, &cuenta);
 
+        char linea[MAX_TEXT];
+        char TipoOperacion[20];
+        char TipoOperacionAnterior[20] = "";
+        int ContadorRetiros = 0;
+        int ContadorTransferencias = 0;
+
+        while (fgets(linea, sizeof(linea), file) != NULL)
+        {
+            if (sscanf(linea, "[%*[^]]] %[^:]:", TipoOperacion) == 1)
+            {
                 if (strcmp(TipoOperacion, "Retiro") == 0)
                 {
-
-                    if (cuentaTemporal == 0)
-                    {
-                        cuentaTemporal = cuenta;
-                    }
-                    else if (cuentaTemporal != cuenta)
-                    {
-                        ContadorRetiros = 1; // Reiniciar el contador si la cuenta cambia
-                        cuentaTemporal = cuenta;
-                    }
+                    if (strcmp(TipoOperacionAnterior, "Retiro") == 0)
+                        ContadorRetiros++;
                     else
+                        ContadorRetiros = 1;
+
+                    strcpy(TipoOperacionAnterior, "Retiro");
+
+                    if (ContadorRetiros >= UmbralRetiros)
                     {
-                        ContadorRetiros += 1;
-                        if (ContadorRetiros >= UmbralRetiros)
-                        {
-                            char mensaje[MAX_TEXT];
-                            int fd = open("fifo_bancoMonitor", O_WRONLY);
-                            if (fd == -1)
-                            {
-                                perror("Error al abrir la tubería fifo_bancoMonitor");
-                                exit(EXIT_FAILURE);
-                            }
-                            snprintf(mensaje, sizeof(mensaje), "ALERTA: Retiros consecutivos en cuenta %d excede el límite de %d \n", cuenta, UmbralRetiros);
-                            write(fd, mensaje, strlen(mensaje) + 1); // Enviar mensaje a la tubería
+                        char mensaje[MAX_TEXT];
+                        snprintf(mensaje, sizeof(mensaje), "ALERTA: Se han realizado %d Retiros consecutivos.\n", ContadorRetiros);
+                        int fd = open("../../fifo_bancoMonitor", O_WRONLY);
+                        if (fd != -1) {
+                            write(fd, mensaje, strlen(mensaje) + 1);
                             close(fd);
+                        } else {
+                            perror("Error al abrir fifo_bancoMonitor");
                         }
                     }
                 }
                 else if (strcmp(TipoOperacion, "Transferencia") == 0)
                 {
-
-                    if (cuentaTemporal == 0)
-                    {
-                        cuentaTemporal = cuenta;
-                    }
-                    else if (cuentaTemporal != cuenta)
-                    {
-                        ContadorTransferencias = 1; // Reiniciar el contador si la cuenta cambia
-                        cuentaTemporal = cuenta;
-                    }
+                    if (strcmp(TipoOperacionAnterior, "Transferencia") == 0)
+                        ContadorTransferencias++;
                     else
+                        ContadorTransferencias = 1;
+
+                    strcpy(TipoOperacionAnterior, "Transferencia");
+
+                    if (ContadorTransferencias >= UmbralTransferencias)
                     {
-                        // Si la cuenta es la misma, incrementamos el contador
-                        ContadorTransferencias += 1;
-                        if (ContadorTransferencias >= UmbralTransferencias)
-                        {
-                            char mensaje[MAX_TEXT];
-                            snprintf(mensaje, sizeof(mensaje), "ALERTA: Transferencias consecutivas en cuenta %d excede el límite de %d \n", cuenta, UmbralTransferencias);
-                            int fd = open("fifo_bancoMonitor", O_WRONLY);
-                            if (fd == -1)
-                            {
-                                perror("Error al abrir la tubería fifo_bancoMonitor");
-                                exit(EXIT_FAILURE);
-                            }
-                            write(fd, mensaje, strlen(mensaje) + 1); // Enviar mensaje a la tubería
+                        char mensaje[MAX_TEXT];
+                        snprintf(mensaje, sizeof(mensaje), "ALERTA: Se han realizado %d Transferencias consecutivas.\n", ContadorTransferencias);
+                        int fd = open("../../fifo_bancoMonitor", O_WRONLY);
+                        if (fd != -1) {
+                            write(fd, mensaje, strlen(mensaje) + 1);
                             close(fd);
+                        } else {
+                            perror("Error al abrir fifo_bancoMonitor");
                         }
                     }
                 }
+                else
+                {
+                    // Otro tipo de operación: reiniciar contadores
+                    ContadorRetiros = 0;
+                    ContadorTransferencias = 0;
+                    strcpy(TipoOperacionAnterior, "");
+                }
             }
-            fclose(file);
-            sem_post(semaforo_transacciones);
         }
-        sleep(60); // Esperar 1 minuto
+
+        fclose(file);
+        sleep(60); // Esperar 60 segundos antes del próximo chequeo
     }
-    sem_close(semaforo_transacciones);
-    sem_unlink("/semaforo_transacciones"); // Eliminamos el semaforo
 
     return 0;
 }
