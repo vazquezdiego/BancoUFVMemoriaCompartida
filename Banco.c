@@ -40,10 +40,13 @@
 #include "Monitor.h"
 #include "Usuarios.h"
 
+
+
 // Variables globales
 Config configuracion;
 Cuenta cuenta;
 TablaCuentas tablaCuentas;
+
 
 void EscribirEnLog(const char *mensaje)
 {
@@ -120,22 +123,22 @@ Config leer_configuracion(const char *ruta)
 void *MostrarMonitor(void *arg)
 {
 
-    pid_t pidMonitor;
-    pidMonitor = fork();
-    if (pidMonitor == 0)
-    {
-        const char *rutaMonitor = configuracion.ruta_monitor;
-        char comandoMonitor[512];
-        snprintf(comandoMonitor, sizeof(comandoMonitor), "%s %d %d %s", rutaMonitor, configuracion.umbral_retiros, configuracion.umbral_transferencias, configuracion.archivo_transacciones);
-        // Ejecutar gnome-terminal con el comando
-        execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoMonitor, NULL);
-    }
-    else
-    {
-    }
+//     pid_t pidMonitor;
+//     pidMonitor = fork();
+//     if (pidMonitor == 0)
+//     {
+//         const char *rutaMonitor = configuracion.ruta_monitor;
+//         char comandoMonitor[512];
+//         snprintf(comandoMonitor, sizeof(comandoMonitor), "%s %d %d %s", rutaMonitor, configuracion.umbral_retiros, configuracion.umbral_transferencias, configuracion.archivo_transacciones);
+//         // Ejecutar gnome-terminal con el comando
+//         execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoMonitor, NULL);
+//     }
+//     else
+//     {
+//     }
 
-    return NULL;
-}
+//     return NULL;
+// }
 
 void *MostrarMenu(void *arg)
 {
@@ -169,9 +172,9 @@ void *MostrarMenu(void *arg)
         {
 
             // Cierra la terminal que ejecutó el proceso (en la mayoría de casos)
-            int killUsuario = system("killall ./usuario");
-            int killMonitor = system("killall ./monitor");
-            int killBanco = system("killall ./banco");
+            pid_t terminalPid = getppid();
+            kill(terminalPid, SIGKILL);
+            exit(EXIT_SUCCESS);
         }
         else
         {
@@ -257,6 +260,7 @@ void *MostrarMenu(void *arg)
     } while (numeroCuenta != 1);
 }
 
+
 void *EscucharTuberiaMonitor(void *arg)
 {
     int fdBancoMonitor;
@@ -294,6 +298,11 @@ int main()
     // Inicializamos las cuentas
     InitCuentas(configuracion.archivo_cuentas);
 
+    // Inicialiazamos el buffer y su mutex
+    buffer.inicio = 0;
+    buffer.fin = 0;
+    pthread_mutex_init(&buffer.mutex, NULL);
+
     char linea[256];
     int id_shmem;
 
@@ -314,7 +323,6 @@ int main()
         tabla->num_cuentas++;
     }
     fclose(archivo);
-
 
     // Tuberias
    if (mkfifo("fifo_bancoMonitor", 0666) == -1 && errno != EEXIST)

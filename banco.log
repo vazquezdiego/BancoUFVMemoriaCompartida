@@ -62,6 +62,7 @@
 [2025-04-14 09:06:07] Usuario con n煤mero de cuenta 1010 creado.
 [2025-04-14 09:06:11] Inicio de sesi贸n de cuenta: banco.log
 [2025-04-14 09:08:23] Inicio de sesi贸n de cuenta: banco.log
+<<<<<<< HEAD
 [2025-05-16 11:04:01] Inicio de sesi贸n de cuenta: banco.log
 [2025-05-16 11:04:04] Inicio de sesi贸n de cuenta: banco.log
 [2025-05-16 11:05:05] Usuario con n煤mero de cuenta 5 creado.
@@ -76,3 +77,6 @@
 [2025-05-16 11:18:22] Usuario con n煤mero de cuenta 2 creado.
 [2025-05-16 11:18:31] Cierre de sesi贸n de creaci贸n de cuenta: 2
 
+=======
+[怾 - El usuario ha salido del banco
+>>>>>>> a46020b7d507bb55f63e604f795def8b57477ab1
