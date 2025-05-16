@@ -188,6 +188,9 @@ void *MostrarMenu(void *arg)
                     cuentaExistente = true;
                     break;
                 }
+                else{
+                    cuentaExistente = false;
+                }
             }
 
             if (cuentaExistente)
@@ -314,8 +317,9 @@ int main()
     }
     fclose(archivo);
 
+
     // Tuberias
-    if (mkfifo("fifo_bancoMonitor", 0666) == -1 && errno != EEXIST)
+   if (mkfifo("fifo_bancoMonitor", 0666) == -1 && errno != EEXIST)
     {
         EscribirEnLog("Error al crear la tubería");
         exit(EXIT_FAILURE);
