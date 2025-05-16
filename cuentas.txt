@@ -2,3 +2,4 @@
 1002,Jane Smith,3000.00,0
 1003,Alice Johnson,7000.00,0
 1009, Juan, 0.00, 0
+2, Francisco, 0.00, 0

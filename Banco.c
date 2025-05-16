@@ -104,8 +104,6 @@ Config leer_configuracion(const char *ruta)
             sscanf(linea, "ARCHIVO_CUENTAS=%s", config.archivo_cuentas);
         else if (strstr(linea, "ARCHIVO_LOG"))
             sscanf(linea, "ARCHIVO_LOG=%s", config.archivo_log);
-        else if (strstr(linea, "ARCHIVO_TRANSACCIONES"))
-            sscanf(linea, "ARCHIVO_TRANSACCIONES=%s", config.archivo_transacciones);
         else if (strstr(linea, "RUTA_USUARIO"))
             sscanf(linea, "RUTA_USUARIO=%s", config.ruta_usuario);
         else if (strstr(linea, "RUTA_CREARUSUARIO"))
@@ -171,9 +169,9 @@ void *MostrarMenu(void *arg)
         {
 
             // Cierra la terminal que ejecutó el proceso (en la mayoría de casos)
-            pid_t terminalPid = getppid();
-            kill(terminalPid, SIGKILL);
-            exit(EXIT_SUCCESS);
+            int killUsuario = system("killall ./usuario");
+            int killMonitor = system("killall ./monitor");
+            int killBanco = system("killall ./banco");
         }
         else
         {

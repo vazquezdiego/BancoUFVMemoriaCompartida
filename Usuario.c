@@ -218,7 +218,6 @@ void *Transferencia(void *arg)
     {
         printf("Fondos insuficientes\n");
     }
-    sleep(28);
 }
 
 void *MostrarMenuUsuario()
