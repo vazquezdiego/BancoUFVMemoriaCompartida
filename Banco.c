@@ -46,6 +46,39 @@
 Config configuracion;
 Cuenta cuenta;
 TablaCuentas tablaCuentas;
+BufferEstructurado buffer = {
+    .inicio = 0,
+    .fin = 0,
+    .mutex = PTHREAD_MUTEX_INITIALIZER
+};
+
+
+// Función del hilo que gestiona las escrituras asíncronas al disco
+void *gestionar_entrada_salida(void *arg) {
+    while (1) {
+        pthread_mutex_lock(&buffer.mutex);
+        if (buffer.inicio != buffer.fin) {
+            Cuenta op = buffer.operaciones[buffer.inicio];
+            buffer.inicio = (buffer.inicio + 1) % 10;
+            pthread_mutex_unlock(&buffer.mutex);
+
+            FILE *archivo = fopen(configuracion.archivo_cuentas, "rb+");
+            if (archivo) {
+                // Suponiendo que el número de cuenta se usa para posición en archivo
+                fseek(archivo, op.numero_cuenta * sizeof(Cuenta), SEEK_SET);
+                fwrite(&op, sizeof(Cuenta), 1, archivo);
+                fclose(archivo);
+            } else {
+                // Manejar error si archivo no se puede abrir
+                perror("Error al abrir archivo cuentas.dat en gestionar_entrada_salida");
+            }
+        } else {
+            pthread_mutex_unlock(&buffer.mutex);
+            usleep(100000); // 100ms para no consumir CPU excesivamente
+        }
+    }
+    return NULL;
+}
 
 
 void EscribirEnLog(const char *mensaje)
@@ -123,22 +156,22 @@ Config leer_configuracion(const char *ruta)
 void *MostrarMonitor(void *arg)
 {
 
-//     pid_t pidMonitor;
-//     pidMonitor = fork();
-//     if (pidMonitor == 0)
-//     {
-//         const char *rutaMonitor = configuracion.ruta_monitor;
-//         char comandoMonitor[512];
-//         snprintf(comandoMonitor, sizeof(comandoMonitor), "%s %d %d %s", rutaMonitor, configuracion.umbral_retiros, configuracion.umbral_transferencias, configuracion.archivo_transacciones);
-//         // Ejecutar gnome-terminal con el comando
-//         execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoMonitor, NULL);
-//     }
-//     else
-//     {
-//     }
+    pid_t pidMonitor;
+    pidMonitor = fork();
+    if (pidMonitor == 0)
+    {
+        const char *rutaMonitor = configuracion.ruta_monitor;
+        char comandoMonitor[512];
+        snprintf(comandoMonitor, sizeof(comandoMonitor), "%s %d %d %s", rutaMonitor, configuracion.umbral_retiros, configuracion.umbral_transferencias, configuracion.archivo_transacciones);
+        // Ejecutar gnome-terminal con el comando
+        execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoMonitor, NULL);
+    }
+    else
+    {
+    }
 
-//     return NULL;
-// }
+    return NULL;
+}
 
 void *MostrarMenu(void *arg)
 {
@@ -170,11 +203,10 @@ void *MostrarMenu(void *arg)
 
         if (numeroCuenta == 1)
         {
-
-            // Cierra la terminal que ejecutó el proceso (en la mayoría de casos)
-            pid_t terminalPid = getppid();
-            kill(terminalPid, SIGKILL);
-            exit(EXIT_SUCCESS);
+            // Matar procesos
+            int killUsuario = system("killall ./usuario");
+            int killMonitor = system("killall ./monitor");
+            int killBanco = system("killall ./banco");
         }
         else
         {
@@ -293,15 +325,16 @@ void *EscucharTuberiaMonitor(void *arg)
 
 int main()
 {
-    pthread_t hilo_menu, hilo_pipes, hilo_monitor, hilo_escuchar;
+    pthread_t hilo_menu, hilo_pipes, hilo_monitor, hilo_escuchar, hilo_entrada_salida;
     configuracion = leer_configuracion("config.txt");
+
     // Inicializamos las cuentas
     InitCuentas(configuracion.archivo_cuentas);
 
-    // Inicialiazamos el buffer y su mutex
+    // Inicializamos el buffer
+    pthread_mutex_init(&buffer.mutex, NULL);
     buffer.inicio = 0;
     buffer.fin = 0;
-    pthread_mutex_init(&buffer.mutex, NULL);
 
     char linea[256];
     int id_shmem;
@@ -332,6 +365,7 @@ int main()
     }
 
     // Crear los hilos
+    pthread_create(&hilo_entrada_salida, NULL, gestionar_entrada_salida, NULL);
     pthread_create(&hilo_escuchar, NULL, EscucharTuberiaMonitor, NULL);
     pthread_create(&hilo_menu, NULL, MostrarMenu, NULL);
     pthread_create(&hilo_monitor, NULL, MostrarMonitor, NULL);
@@ -339,5 +373,7 @@ int main()
     pthread_join(hilo_menu, NULL);
     pthread_join(hilo_monitor, NULL);
     pthread_join(hilo_escuchar, NULL);
+
+
     return 0;
 }

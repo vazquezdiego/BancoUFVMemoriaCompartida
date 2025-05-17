@@ -28,15 +28,14 @@
 #include <errno.h>
 #include <sys/shm.h>
 
+
+
 //variables globales
 sem_t *semaforo_transacciones;
 
 // Definimos un mutex para controlar las operaciones que realizan los usuarios
 pthread_mutex_t mutex_u = PTHREAD_MUTEX_INITIALIZER;
 
-// El buffer y la tabla de cuentas
-BufferEstructurado buffer;
-TablaCuentas *tabla;
 
 typedef struct
 {
@@ -45,6 +44,7 @@ typedef struct
     int posicionCuenta;
 } ArgsHilo;
 
+// Escribir en buffer
 
 
 void ObtenerFechaHora(char *buffer, size_t bufferSize)
@@ -72,20 +72,9 @@ void EscribirEnLog(const char *mensaje, const char *archivoLog)
     fclose(archivo);
 }
 
-// Para utilizar el nuevo buffer y actualizar la cuenta
-void actualizar_cuenta(Cuenta cuenta_actualizada) {
-    // Primero escribe en la memoria compartida
-    for (int i = 0; i < tabla->num_cuentas; i++) {
-        if (tabla->cuenta[i].numero_cuenta == cuenta_actualizada.numero_cuenta) {
-            tabla->cuenta[i] = cuenta_actualizada;
-            break;
-        }
-    }
-    
-    // Luego escribe en disco encolando
+void actualizar_buffer(Cuenta cuenta) {
     pthread_mutex_lock(&buffer.mutex);
-    buffer.operaciones[buffer.fin] = cuenta_actualizada;
-    buffer.fin = (buffer.fin + 1) % 10;
+    
     pthread_mutex_unlock(&buffer.mutex);
 }
 
@@ -113,8 +102,7 @@ void *Depositar(void *arg)
     args->tabla->cuenta[args->posicionCuenta].saldo += cantidad;
     args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
 
-    //Actualizamos la cuenta
-    actualizar_cuenta(args->tabla->cuenta[args->posicionCuenta]);
+
 
     // Escribimos en el log
     // Usamos semaforo para controlar el acceso
@@ -164,9 +152,6 @@ void *Retirar(void *arg)
         args->tabla->cuenta[args->posicionCuenta].saldo -= cantidad;
         args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
 
-        //Actualizamos la cuenta
-        actualizar_cuenta(args->tabla->cuenta[args->posicionCuenta]);
-
 
         // escribimos en el log
         // Semaforo para controlar el acceso
@@ -202,8 +187,6 @@ void *ConsultarSaldo(void *arg)
     ArgsHilo *args = (ArgsHilo *)arg;
     printf("Saldo actual: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
 
-    //Actualizamos la cuenta
-    actualizar_cuenta(args->tabla->cuenta[args->posicionCuenta]);
 
 
     // Desbloqueamos el mutex
@@ -288,7 +271,6 @@ void *Transferencia(void *arg)
     {
         printf("Fondos insuficientes\n");
     }
-    sleep(28);
 }
 
 void *MostrarMenuUsuario()

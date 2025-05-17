@@ -18,6 +18,7 @@ typedef struct
     char titular[50];
     float saldo;
     int num_transacciones;
+    char fecha
 } Cuenta;
 
 typedef struct
@@ -35,5 +36,6 @@ typedef struct {
 } BufferEstructurado;
 
 extern TablaCuentas tablaCuentas;
+extern BufferEstructurado buffer;
 
 #endif //USUARIOS_H

@@ -80,3 +80,6 @@
 =======
 [�] - El usuario ha salido del banco
 >>>>>>> a46020b7d507bb55f63e604f795def8b57477ab1
+[2025-05-16 14:48:05] Inicio de sesión de cuenta: banco.log
+[2025-05-16 14:48:09] Cierre de sesión de cuenta: 1001
+[2025-05-16 14:48:13] Usuario con número de cuenta 3 creado.
