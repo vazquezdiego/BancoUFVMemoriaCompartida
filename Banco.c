@@ -26,7 +26,6 @@
 #include "Usuarios.h"
 #include "Banco.h"
 #include "init_cuentas.c"
-#include "crearUsuario.h"
 #include "Config.h"
 #include "Monitor.h"
 #include "Usuarios.h"
@@ -268,29 +267,100 @@ void *MostrarMenu(void *arg)
         }
         else if (numeroCuenta == 2)
         {
+            int numeroCuentaUsuarioNuevo;
+            char nombreUsuario[50];
+            char confirmacion;
 
-            // Sirve para la creacion de Usuario
-            pidCrearUsuario = fork();
+            printf("+-----------------------------+\n");
+            printf("| Menu de creación de usuario |\n");
+            printf("+-----------------------------+\n");
 
-            if (pidCrearUsuario < 0)
+            // Validación de número de cuenta
+            do
             {
-                EscribirEnLog("Error al iniciar el proceso de creación de usuario");
-                exit(EXIT_FAILURE);
+                printf("Introduce un número de cuenta de 4 dígitos: ");
+                scanf("%d", &numeroCuentaUsuarioNuevo);
+
+                if (numeroCuentaUsuarioNuevo < 1000 || numeroCuentaUsuarioNuevo > 9999)
+                {
+                    printf("Error: El número de cuenta debe tener exactamente 4 dígitos.\n");
+                }
+            } while (numeroCuentaUsuarioNuevo < 1000 || numeroCuentaUsuarioNuevo > 9999);
+
+            // Verificar si la cuenta ya existe
+            FILE *archivo = fopen(configuracion.archivo_cuentas, "r");
+            if (!archivo)
+            {
+                perror("Error al abrir el archivo de cuentas");
+                continue;
             }
 
-            if (pidCrearUsuario == 0)
-            { // proceso hijo
-
-                // Ruta absoluta del ejecutable menu usuario
-                const char *rutaCrearUsuario = configuracion.ruta_crearusuario;
-
-                // Construcción del comando con pausa al final
-                char comandoCrearUsuario[512];
-                snprintf(comandoCrearUsuario, sizeof(comandoCrearUsuario), "%s %d %s", rutaCrearUsuario, numeroCuenta, configuracion.archivo_log);
-
-                // Ejecutar gnome-terminal con el comando
-                execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoCrearUsuario, NULL);
+            int cuentaExiste = 0;
+            char linea[256];
+            while (fgets(linea, sizeof(linea), archivo))
+            {
+                int cuentaExistente;
+                if (sscanf(linea, "%d,", &cuentaExistente) && cuentaExistente == numeroCuentaUsuarioNuevo)
+                {
+                    cuentaExiste = 1;
+                    break;
+                }
             }
+            fclose(archivo);
+
+            if (cuentaExiste)
+            {
+                printf("Error: La cuenta %d ya existe.\n", numeroCuentaUsuarioNuevo);
+                continue;
+            }
+
+            printf("Introduce el nombre y apellido del titular: ");
+            scanf(" %49[^\n]", nombreUsuario); // Leer hasta 49 caracteres incluyendo espacios
+
+            // Crear nueva cuenta
+            Cuenta nuevaCuenta;
+            nuevaCuenta.numero_cuenta = numeroCuentaUsuarioNuevo;
+            strncpy(nuevaCuenta.titular, nombreUsuario, 49);
+            nuevaCuenta.saldo = 0.0f;
+            nuevaCuenta.num_transacciones = 0;
+            ObtenerFechaHora(nuevaCuenta.fecha_hora, sizeof(nuevaCuenta.fecha_hora));
+
+            // Guardar en disco
+            archivo = fopen(configuracion.archivo_cuentas, "a");
+            if (!archivo)
+            {
+                perror("Error al abrir archivo de cuentas para escritura");
+                continue;
+            }
+
+            fprintf(archivo, "%d,%s,%.2f,%d,[%s]\n",
+                    nuevaCuenta.numero_cuenta,
+                    nuevaCuenta.titular,
+                    nuevaCuenta.saldo,
+                    nuevaCuenta.num_transacciones,
+                    nuevaCuenta.fecha_hora);
+            fclose(archivo);
+
+            // Actualizar memoria compartida
+            int indice_reemplazo = 4; // Siempre reemplazar la última posición
+            if (tabla->num_cuentas < 5)
+            {
+                indice_reemplazo = tabla->num_cuentas;
+                tabla->num_cuentas++;
+            }
+
+            tabla->cuenta[indice_reemplazo] = nuevaCuenta;
+            printf("Nueva cuenta creada en posición %d\n", indice_reemplazo);
+
+            // Actualizar buffer
+            BufferEstructurado *buf = (BufferEstructurado *)shmat(shm_buffer, NULL, 0);
+            pthread_mutex_lock(&buf->mutex);
+            buf->operaciones[buf->fin] = nuevaCuenta;
+            buf->fin = (buf->fin + 1) % TAM_BUFFER;
+            pthread_mutex_unlock(&buf->mutex);
+            shmdt(buf);
+
+            printf("Usuario creado exitosamente!\n");
         }
         else if (numeroCuenta == 3)
         {
