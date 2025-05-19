@@ -21,6 +21,8 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 // Archivos.c Necesarios
 #include "Usuarios.h"
@@ -269,7 +271,7 @@ void *MostrarMenu(void *arg)
         {
             int numeroCuentaUsuarioNuevo;
             char nombreUsuario[50];
-            char confirmacion;
+            char path[100];
 
             printf("+-----------------------------+\n");
             printf("| Menu de creación de usuario |\n");
@@ -315,7 +317,7 @@ void *MostrarMenu(void *arg)
             }
 
             printf("Introduce el nombre y apellido del titular: ");
-            scanf(" %49[^\n]", nombreUsuario); // Leer hasta 49 caracteres incluyendo espacios
+            scanf(" %49[^\n]", nombreUsuario);
 
             // Crear nueva cuenta
             Cuenta nuevaCuenta;
@@ -325,15 +327,29 @@ void *MostrarMenu(void *arg)
             nuevaCuenta.num_transacciones = 0;
             ObtenerFechaHora(nuevaCuenta.fecha_hora, sizeof(nuevaCuenta.fecha_hora));
 
-            // Guardar en disco
-            archivo = fopen(configuracion.archivo_cuentas, "a");
-            if (!archivo)
+            snprintf(path, sizeof(path), "./transacciones/%d", numeroCuentaUsuarioNuevo);
+            mkdir(path, 0777);
+
+            char rutaArchivo[100];
+            snprintf(rutaArchivo, sizeof(rutaArchivo), "./transacciones/%d/transacciones.log", numeroCuentaUsuarioNuevo);
+
+            FILE *archivoTransacciones = fopen(rutaArchivo, "w");
+            if (!archivoTransacciones)
+            {
+                perror("Error al crear el archivo de transacciones");
+                exit(EXIT_FAILURE);
+            }
+            fclose(archivoTransacciones);
+
+            // Guardar en disco (archivo principal de cuentas)
+            FILE *archivoNuevoUsuario = fopen(configuracion.archivo_cuentas, "a");
+            if (!archivoNuevoUsuario)
             {
                 perror("Error al abrir archivo de cuentas para escritura");
                 continue;
             }
 
-            fprintf(archivo, "%d,%s,%.2f,%d,[%s]\n",
+                fprintf(archivoNuevoUsuario, "%d,%s,%.2f,%d,[%s]\n",
                     nuevaCuenta.numero_cuenta,
                     nuevaCuenta.titular,
                     nuevaCuenta.saldo,
@@ -342,7 +358,7 @@ void *MostrarMenu(void *arg)
             fclose(archivo);
 
             // Actualizar memoria compartida
-            int indice_reemplazo = 4; // Siempre reemplazar la última posición
+            int indice_reemplazo = 4;
             if (tabla->num_cuentas < 5)
             {
                 indice_reemplazo = tabla->num_cuentas;
@@ -350,15 +366,6 @@ void *MostrarMenu(void *arg)
             }
 
             tabla->cuenta[indice_reemplazo] = nuevaCuenta;
-            printf("Nueva cuenta creada en posición %d\n", indice_reemplazo);
-
-            // Actualizar buffer
-            BufferEstructurado *buf = (BufferEstructurado *)shmat(shm_buffer, NULL, 0);
-            pthread_mutex_lock(&buf->mutex);
-            buf->operaciones[buf->fin] = nuevaCuenta;
-            buf->fin = (buf->fin + 1) % TAM_BUFFER;
-            pthread_mutex_unlock(&buf->mutex);
-            shmdt(buf);
 
             printf("Usuario creado exitosamente!\n");
         }
