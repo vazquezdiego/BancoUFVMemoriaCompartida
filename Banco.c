@@ -5,7 +5,6 @@
 //
 //
 // +------------------------------------------------------------------------------------------------------------------------------------------------+/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <time.h>
 
 // Archivos.c Necesarios
 #include "Usuarios.h"
@@ -97,7 +97,7 @@ void *gestionar_buffer(void *arg)
             int num_transacciones;
             char fecha_hora[22];
             // Parsear línea
-            if(sscanf(lineas[i], "%d,%[^,],%f,%d,[%[^]]", &numero_cuenta, titular, &saldo, &num_transacciones, fecha_hora))
+            if (sscanf(lineas[i], "%d,%[^,],%f,%d,[%[^]]", &numero_cuenta, titular, &saldo, &num_transacciones, fecha_hora))
             {
                 if (numero_cuenta == cuenta_actualizada.numero_cuenta)
                 {
@@ -239,15 +239,24 @@ void *MostrarMenu(void *arg)
 
     do
     {
-        printf("+-----------------------------+\n");
-        printf("|    Bienvenido al Banco      |\n");
-        printf("|  salir(1)                   |\n");
-        for(int i = 0; i < tabla->num_cuentas; i++)
+        printf("+-----------------------------------------------------------+\n");
+        printf("|    Bienvenido al Banco                                    |\n");
+        printf("+-----------------------------------------------------------+\n");
+        printf("|  - salir(1)                                               |\n");
+        printf("|  - crear usuario(2)                                       |\n");
+        printf("|  - ¿No aparece tu cuenta?(3)                              |\n");
+        printf("+-----------------------------------------------------------+\n");
+        printf("| Cuentas activas:                                          |\n");
+        printf("+-----------------------------------------------------------+\n");
+        for (int i = 0; i < tabla->num_cuentas; i++)
         {
-            printf("| %d. %s\n", tabla->cuenta[i].numero_cuenta);
+            printf("|       Número de cuenta: %d                              |\n", tabla->cuenta[i].numero_cuenta);
         }
-        printf("+-----------------------------+\n");
-        printf("Introduce tu número de cuenta:\n");
+        printf("+-----------------------------------------------------------+\n");
+        printf("|  Introduce tu número de cuenta o introduce uno de los     |\n");
+        printf("|  números de arriba para realizar otra acción.             |\n");
+        printf("+-----------------------------------------------------------+\n");
+
         scanf("%d", &numeroCuenta);
 
         if (numeroCuenta == 1)
@@ -256,6 +265,101 @@ void *MostrarMenu(void *arg)
             int killUsuario = system("killall ./usuario");
             int killMonitor = system("killall ./monitor");
             int killBanco = system("killall ./banco");
+        }
+        else if (numeroCuenta == 2)
+        {
+
+            // Sirve para la creacion de Usuario
+            pidCrearUsuario = fork();
+
+            if (pidCrearUsuario < 0)
+            {
+                EscribirEnLog("Error al iniciar el proceso de creación de usuario");
+                exit(EXIT_FAILURE);
+            }
+
+            if (pidCrearUsuario == 0)
+            { // proceso hijo
+
+                // Ruta absoluta del ejecutable menu usuario
+                const char *rutaCrearUsuario = configuracion.ruta_crearusuario;
+
+                // Construcción del comando con pausa al final
+                char comandoCrearUsuario[512];
+                snprintf(comandoCrearUsuario, sizeof(comandoCrearUsuario), "%s %d %s", rutaCrearUsuario, numeroCuenta, configuracion.archivo_log);
+
+                // Ejecutar gnome-terminal con el comando
+                execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoCrearUsuario, NULL);
+            }
+        }
+        else if (numeroCuenta == 3)
+        {
+            int NumeroCuenta;
+            char linea[256];
+
+            printf("Introduce el número de cuenta,: ");
+            scanf("%d", &NumeroCuenta);
+
+            FILE *archivo = fopen(configuracion.archivo_cuentas, "r");
+            if (!archivo)
+            {
+                perror("No se pudo abrir el archivo");
+                exit(EXIT_FAILURE);
+            }
+
+            Cuenta nuevaCuenta;
+            int cuentaEncontrada = 0;
+
+            // Buscar la cuenta en el archivo
+            while (fgets(linea, sizeof(linea), archivo))
+            {
+                if (sscanf(linea, "%d,%[^,],%f,%d,[%[^]]",
+                           &nuevaCuenta.numero_cuenta,
+                           nuevaCuenta.titular,
+                           &nuevaCuenta.saldo,
+                           &nuevaCuenta.num_transacciones,
+                           nuevaCuenta.fecha_hora) == 5)
+                {
+
+                    if (nuevaCuenta.numero_cuenta == NumeroCuenta)
+                    {
+                        cuentaEncontrada = 1;
+                        break;
+                    }
+                }
+            }
+            fclose(archivo);
+
+            if (!cuentaEncontrada)
+            {
+                printf("La cuenta %d no existe en el archivo.\n", NumeroCuenta);
+                continue;
+            }
+
+            ObtenerFechaHora(nuevaCuenta.fecha_hora, sizeof(nuevaCuenta.fecha_hora));
+
+            // Eliminar siempre la posición 4 (última posición del array)
+            int indice_a_reemplazar = 4; // Índice fijo 4
+
+            // Verificar si la posición es válida
+            if (indice_a_reemplazar >= 0 && indice_a_reemplazar < tabla->num_cuentas)
+            {
+                // Reemplazar la cuenta en posición 4
+                tabla->cuenta[indice_a_reemplazar] = nuevaCuenta;
+                printf("Cuenta %d cargada en posición 4 (reemplazado)\n", nuevaCuenta.numero_cuenta);
+
+                // Actualizar buffer
+                BufferEstructurado *buf = (BufferEstructurado *)shmat(shm_buffer, NULL, 0);
+                pthread_mutex_lock(&buf->mutex);
+                buf->operaciones[buf->fin] = nuevaCuenta;
+                buf->fin = (buf->fin + 1) % TAM_BUFFER;
+                pthread_mutex_unlock(&buf->mutex);
+                shmdt(buf);
+            }
+            else
+            {
+                printf("Error: Posición inválida o memoria no llena\n");
+            }
         }
         else
         {
@@ -267,75 +371,38 @@ void *MostrarMenu(void *arg)
                     // Si encontramos una cuenta con el mismo numeroCuenta, retornamos true
                     // Guardamos la posicion de la cuenta
                     PosicionCuenta = i;
-                    cuentaExistente = true;
                     break;
                 }
-                else
-                {
-                    cuentaExistente = false;
-                }
             }
 
-            if (cuentaExistente)
+            printf("Nuevo usuario conectado. Iniciando sesión...\n");
+
+            pidUsuario = fork();
+
+            if (pidUsuario < 0)
             {
-                printf("Nuevo usuario conectado. Iniciando sesión...\n");
+                EscribirEnLog("Error al crear un usuario");
+                exit(EXIT_FAILURE);
+            }
 
-                pidUsuario = fork();
+            if (pidUsuario == 0)
+            { // Proceso hijo
+                // Ruta absoluta del ejecutable usuario
+                const char *rutaUsuario = configuracion.ruta_usuario;
 
-                if (pidUsuario < 0)
-                {
-                    EscribirEnLog("Error al crear un usuario");
-                    exit(EXIT_FAILURE);
-                }
+                // Construcción del comando con pausa al final
+                char comandoUsuario[512];
+                snprintf(comandoUsuario, sizeof(comandoUsuario), "\"%s\" \"%s\" \"%d\" \"%d\" \"%d\"; exit", rutaUsuario, configuracion.archivo_log, shm_id, PosicionCuenta, shm_buffer);
 
-                if (pidUsuario == 0)
-                { // Proceso hijo
-                    // Ruta absoluta del ejecutable usuario
-                    const char *rutaUsuario = configuracion.ruta_usuario;
+                // Ejecutar gnome-terminal con el comando
+                execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoUsuario, NULL);
 
-                    // Construcción del comando con pausa al final
-                    char comandoUsuario[512];
-                    snprintf(comandoUsuario, sizeof(comandoUsuario), "\"%s\" \"%s\" \"%d\" \"%d\" \"%d\"; exit", rutaUsuario, configuracion.archivo_log, shm_id, PosicionCuenta, shm_buffer);
-
-                    // Ejecutar gnome-terminal con el comando
-                    execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoUsuario, NULL);
-
-                    // Si execlp falla
-                    perror("Error al ejecutar gnome-terminal");
-                    exit(EXIT_FAILURE);
-                }
-                else
-                { // Proceso padre
-                }
+                // Si execlp falla
+                perror("Error al ejecutar gnome-terminal");
+                exit(EXIT_FAILURE);
             }
             else
-            {
-
-                // Sirve para la creacion de Usuario
-                pidCrearUsuario = fork();
-
-                if (pidCrearUsuario < 0)
-                {
-                    EscribirEnLog("Error al iniciar el proceso de creación de usuario");
-                    exit(EXIT_FAILURE);
-                }
-
-                if (pidCrearUsuario == 0)
-                { // proceso hijo
-
-                    // Ruta absoluta del ejecutable menu usuario
-                    const char *rutaCrearUsuario = configuracion.ruta_crearusuario;
-
-                    // Construcción del comando con pausa al final
-                    char comandoCrearUsuario[512];
-                    snprintf(comandoCrearUsuario, sizeof(comandoCrearUsuario), "%s %d %s", rutaCrearUsuario, numeroCuenta, configuracion.archivo_log);
-
-                    // Ejecutar gnome-terminal con el comando
-                    execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoCrearUsuario, NULL);
-                }
-                else
-                {
-                }
+            { // Proceso padre
             }
         }
 
@@ -419,7 +486,7 @@ int main()
     tabla->num_cuentas = 0;
 
     FILE *archivo = fopen(configuracion.archivo_cuentas, "r");
-    while (fgets(linea, sizeof(linea), archivo))
+    while (fgets(linea, sizeof(linea), archivo) && tabla->num_cuentas < 5)
     {
         sscanf(linea, "%d,%[^,],%f,%d,%s", &tabla->cuenta[tabla->num_cuentas].numero_cuenta, tabla->cuenta[tabla->num_cuentas].titular, &tabla->cuenta[tabla->num_cuentas].saldo, &tabla->cuenta[tabla->num_cuentas].num_transacciones, tabla->cuenta[tabla->num_cuentas].fecha_hora);
         tabla->num_cuentas++;

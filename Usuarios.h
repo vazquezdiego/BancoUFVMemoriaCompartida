@@ -23,7 +23,7 @@ typedef struct
 
 typedef struct
 {
-    Cuenta cuenta[100];
+    Cuenta cuenta[5];
     int num_cuentas;
 } TablaCuentas;
 
