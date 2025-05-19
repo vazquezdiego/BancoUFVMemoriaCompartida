@@ -266,6 +266,13 @@ void *MostrarMenu(void *arg)
             int killUsuario = system("killall ./usuario");
             int killMonitor = system("killall ./monitor");
             int killBanco = system("killall ./banco");
+
+            int shmid = shmget(SHM_KEY, sizeof(TablaCuentas), IPC_CREAT | 0666);
+            shmctl(shmid, IPC_RMID, NULL);
+
+            // lo mismo con buffer
+            int shmbuffer = shmget(SHM_BUFFER, sizeof(BufferEstructurado), IPC_CREAT | 0666);
+            shmctl(shmbuffer, IPC_RMID, NULL);
         }
         else if (numeroCuenta == 2)
         {
@@ -349,7 +356,7 @@ void *MostrarMenu(void *arg)
                 continue;
             }
 
-                fprintf(archivoNuevoUsuario, "%d,%s,%.2f,%d,[%s]\n",
+            fprintf(archivoNuevoUsuario, "%d,%s,%.2f,%d,[%s]\n",
                     nuevaCuenta.numero_cuenta,
                     nuevaCuenta.titular,
                     nuevaCuenta.saldo,
@@ -545,7 +552,12 @@ int main()
     BufferEstructurado *buffer = (BufferEstructurado *)shmat(id_buffer, NULL, 0);
     if (buffer == (void *)-1)
     {
-        perror("Error al mapear el segmento de memoria compartida del buffer");
+
+        char fechaHora[22];
+        char mensaje[256];
+        ObtenerFechaHora(fechaHora, sizeof(fechaHora));
+        snprintf(mensaje, sizeof(mensaje), "[%s] error al mapear la memoria compartida del buffer.\n", fechaHora);
+        EscribirEnLog(mensaje);
         exit(EXIT_FAILURE);
     }
 
@@ -580,7 +592,7 @@ int main()
     pthread_create(&hilo_escuchar, NULL, EscucharTuberiaMonitor, NULL);
     pthread_create(&hilo_menu, NULL, MostrarMenu, NULL);
     pthread_create(&hilo_monitor, NULL, MostrarMonitor, NULL);
-    pthread_create(&hilo_buffer, NULL, gestionar_buffer, NULL);
+    // pthread_create(&hilo_buffer, NULL, gestionar_buffer, NULL);
 
     pthread_join(hilo_menu, NULL);
     pthread_join(hilo_escuchar, NULL);

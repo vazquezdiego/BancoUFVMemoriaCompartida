@@ -91,19 +91,21 @@ void *Depositar(void *arg)
     args->tabla->cuenta[args->posicionCuenta].saldo += cantidad;
     args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
 
-
     // Escribimos en el log
     // Usamos semaforo para controlar el acceso
-    sem_wait(semaforo_transacciones);
     snprintf(rutaLog, sizeof(rutaLog), "./transacciones/%d/transacciones.log", args->tabla->cuenta[args->posicionCuenta].numero_cuenta);
     ObtenerFechaHora(FechaHora, sizeof(FechaHora));
-    strncpy(args->tabla->cuenta[args->posicionCuenta].fecha_hora, FechaHora, sizeof(args->tabla->cuenta[args->posicionCuenta].fecha_hora));
     FILE *log = fopen(rutaLog, "a");
+    if (!log)
+    {
+        printf("Error al abrir el archivo.");
+    }
     fprintf(log, "[%s] Deposito: +%.2f\n", FechaHora, cantidad);
     fclose(log);
-    sem_post(semaforo_transacciones);
 
     pthread_mutex_lock(&args->buffer->mutex);
+
+    strncpy(args->tabla->cuenta[args->posicionCuenta].fecha_hora, FechaHora, sizeof(args->tabla->cuenta[args->posicionCuenta].fecha_hora));
 
     // Comprobar si el buffer está lleno antes de insertar
     int siguienteFin = (args->buffer->fin + 1) % TAM_BUFFER;
@@ -122,7 +124,7 @@ void *Depositar(void *arg)
         args->buffer->fin = siguienteFin;
 
         printf("Elemento insertado en la posición %d del buffer\n", posicionGuardada);
-        printf("inicio = %d, fin = %d\n", args->buffer->inicio, args->buffer->fin);
+
     }
 
     pthread_mutex_unlock(&args->buffer->mutex);
@@ -165,8 +167,6 @@ void *Retirar(void *arg)
         args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
 
         // escribimos en el log
-        // Semaforo para controlar el acceso
-        sem_wait(semaforo_transacciones);
 
         // Obtenemos la fecha y hora
         ObtenerFechaHora(FechaHora, sizeof(FechaHora));
@@ -176,8 +176,14 @@ void *Retirar(void *arg)
 
         snprintf(rutaLog, sizeof(rutaLog), "./transacciones/%d/transacciones.log", args->tabla->cuenta[args->posicionCuenta].numero_cuenta);
         FILE *log = fopen(rutaLog, "a");
+        if (!log)
+        {
+            printf("Error al abrir el archivo.");
+        }
         fprintf(log, "[%s] Retiro: -%.2f\n", FechaHora, cantidad);
         fclose(log);
+
+
         pthread_mutex_lock(&args->buffer->mutex);
 
         // Guardar posición actual
@@ -186,9 +192,8 @@ void *Retirar(void *arg)
         // Insertar elemento en esa posición
         args->buffer->operaciones[posicionGuardada] = args->tabla->cuenta[args->posicionCuenta];
 
-        // Incrementar el índice fin del buffer circular
-        args->buffer->fin = (args->buffer->fin + 1) % TAM_BUFFER;
-
+        // Comprobar si el buffer está lleno antes de insertar
+        int siguienteFin = (args->buffer->fin + 1) % TAM_BUFFER;
         // Comprobar si el buffer está lleno (fin == inicio)
         if (args->buffer->fin == args->buffer->inicio)
         {
@@ -197,7 +202,6 @@ void *Retirar(void *arg)
         else
         {
             printf("Elemento insertado en la posición %d del buffer\n", posicionGuardada);
-            printf("inicio = %d, fin = %d\n", args->buffer->inicio, args->buffer->fin);
         }
 
         pthread_mutex_unlock(&args->buffer->mutex);
@@ -289,19 +293,20 @@ void *Transferencia(void *arg)
 
         // Escribimos en el log de la cuenta origen
         // Usamos semaforo para controlar el acceso al log
-        sem_wait(semaforo_transacciones);
         ObtenerFechaHora(FechaHora, sizeof(FechaHora));
 
         // Guardamos la fecha y hora de la transacción
         strncpy(args->tabla->cuenta[args->posicionCuenta].fecha_hora, FechaHora, sizeof(args->tabla->cuenta[args->posicionCuenta].fecha_hora));
         strncpy(args->tabla->cuenta[posicionCuentaDestino].fecha_hora, FechaHora, sizeof(args->tabla->cuenta[posicionCuentaDestino].fecha_hora));
 
-
         snprintf(rutaLog, sizeof(rutaLog), "./transacciones/%d/transacciones.log", args->tabla->cuenta[args->posicionCuenta].numero_cuenta);
         FILE *log = fopen(rutaLog, "a");
+        if (!log)
+        {
+            printf("Error al abrir el archivo.");
+        }
         fprintf(log, "[%s] Transferencia a cuenta %d: -%.2f\n", FechaHora, cuentaDestino, cantidad);
         fclose(log);
-        sem_post(semaforo_transacciones);
 
         // Guardar en buffer la cuenta origen y la cuenta destino
         pthread_mutex_lock(&args->buffer->mutex);
@@ -311,6 +316,8 @@ void *Transferencia(void *arg)
         args->buffer->operaciones[pos] = args->tabla->cuenta[args->posicionCuenta];
         args->buffer->fin = (args->buffer->fin + 1) % TAM_BUFFER;
 
+        // Comprobar si el buffer está lleno antes de insertar
+        int siguienteFin = (args->buffer->fin + 1) % TAM_BUFFER;
         if (args->buffer->fin == args->buffer->inicio)
             printf("Buffer lleno después de insertar en la posición %d\n", pos);
         else
