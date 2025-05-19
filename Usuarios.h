@@ -18,6 +18,7 @@ typedef struct
     char titular[50];
     float saldo;
     int num_transacciones;
+    char fecha_hora[50];
 } Cuenta;
 
 typedef struct

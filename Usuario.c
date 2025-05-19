@@ -91,11 +91,13 @@ void *Depositar(void *arg)
     args->tabla->cuenta[args->posicionCuenta].saldo += cantidad;
     args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
 
+
     // Escribimos en el log
     // Usamos semaforo para controlar el acceso
     sem_wait(semaforo_transacciones);
     snprintf(rutaLog, sizeof(rutaLog), "./transacciones/%d/transacciones.log", args->tabla->cuenta[args->posicionCuenta].numero_cuenta);
     ObtenerFechaHora(FechaHora, sizeof(FechaHora));
+    strncpy(args->tabla->cuenta[args->posicionCuenta].fecha_hora, FechaHora, sizeof(args->tabla->cuenta[args->posicionCuenta].fecha_hora));
     FILE *log = fopen(rutaLog, "a");
     fprintf(log, "[%s] Deposito: +%.2f\n", FechaHora, cantidad);
     fclose(log);
@@ -166,7 +168,12 @@ void *Retirar(void *arg)
         // Semaforo para controlar el acceso
         sem_wait(semaforo_transacciones);
 
+        // Obtenemos la fecha y hora
         ObtenerFechaHora(FechaHora, sizeof(FechaHora));
+
+        // Guardamos la fecha y hora de la transacción
+        strncpy(args->tabla->cuenta[args->posicionCuenta].fecha_hora, FechaHora, sizeof(args->tabla->cuenta[args->posicionCuenta].fecha_hora));
+
         snprintf(rutaLog, sizeof(rutaLog), "./transacciones/%d/transacciones.log", args->tabla->cuenta[args->posicionCuenta].numero_cuenta);
         FILE *log = fopen(rutaLog, "a");
         fprintf(log, "[%s] Retiro: -%.2f\n", FechaHora, cantidad);
@@ -284,6 +291,12 @@ void *Transferencia(void *arg)
         // Usamos semaforo para controlar el acceso al log
         sem_wait(semaforo_transacciones);
         ObtenerFechaHora(FechaHora, sizeof(FechaHora));
+
+        // Guardamos la fecha y hora de la transacción
+        strncpy(args->tabla->cuenta[args->posicionCuenta].fecha_hora, FechaHora, sizeof(args->tabla->cuenta[args->posicionCuenta].fecha_hora));
+        strncpy(args->tabla->cuenta[posicionCuentaDestino].fecha_hora, FechaHora, sizeof(args->tabla->cuenta[posicionCuentaDestino].fecha_hora));
+
+
         snprintf(rutaLog, sizeof(rutaLog), "./transacciones/%d/transacciones.log", args->tabla->cuenta[args->posicionCuenta].numero_cuenta);
         FILE *log = fopen(rutaLog, "a");
         fprintf(log, "[%s] Transferencia a cuenta %d: -%.2f\n", FechaHora, cuentaDestino, cantidad);

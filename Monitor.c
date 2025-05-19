@@ -80,10 +80,6 @@ void procesarArchivo(const char *ruta, int UmbralRetiros, int UmbralTransferenci
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 4) {
-        fprintf(stderr, "Uso: %s <UmbralRetiros> <UmbralTransferencias> <carpetaTransacciones>\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
 
     printf("Monitor iniciado...\n");
 

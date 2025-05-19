@@ -95,14 +95,14 @@ void *gestionar_buffer(void *arg)
             char titular[100];
             float saldo;
             int num_transacciones;
-
+            char fecha_hora[22];
             // Parsear línea
-            if (sscanf(lineas[i], "%d,%[^,],%f,%d", &numero_cuenta, titular, &saldo, &num_transacciones) == 4)
+            if(sscanf(lineas[i], "%d,%[^,],%f,%d,[%[^]]", &numero_cuenta, titular, &saldo, &num_transacciones, fecha_hora))
             {
                 if (numero_cuenta == cuenta_actualizada.numero_cuenta)
                 {
                     // Reescribir con datos actualizados
-                    fprintf(archivo, "%d,%s,%.2f,%d\n", cuenta_actualizada.numero_cuenta, cuenta_actualizada.titular, cuenta_actualizada.saldo, cuenta_actualizada.num_transacciones);
+                    fprintf(archivo, "%d,%s,%.2f,%d,[%s]\n", cuenta_actualizada.numero_cuenta, cuenta_actualizada.titular, cuenta_actualizada.saldo, cuenta_actualizada.num_transacciones, cuenta_actualizada.fecha_hora);
                 }
                 else
                 {
@@ -242,6 +242,10 @@ void *MostrarMenu(void *arg)
         printf("+-----------------------------+\n");
         printf("|    Bienvenido al Banco      |\n");
         printf("|  salir(1)                   |\n");
+        for(int i = 0; i < tabla->num_cuentas; i++)
+        {
+            printf("| %d. %s\n", tabla->cuenta[i].numero_cuenta);
+        }
         printf("+-----------------------------+\n");
         printf("Introduce tu número de cuenta:\n");
         scanf("%d", &numeroCuenta);
@@ -417,7 +421,7 @@ int main()
     FILE *archivo = fopen(configuracion.archivo_cuentas, "r");
     while (fgets(linea, sizeof(linea), archivo))
     {
-        sscanf(linea, "%d,%[^,],%f,%d", &tabla->cuenta[tabla->num_cuentas].numero_cuenta, tabla->cuenta[tabla->num_cuentas].titular, &tabla->cuenta[tabla->num_cuentas].saldo, &tabla->cuenta[tabla->num_cuentas].num_transacciones);
+        sscanf(linea, "%d,%[^,],%f,%d,%s", &tabla->cuenta[tabla->num_cuentas].numero_cuenta, tabla->cuenta[tabla->num_cuentas].titular, &tabla->cuenta[tabla->num_cuentas].saldo, &tabla->cuenta[tabla->num_cuentas].num_transacciones, tabla->cuenta[tabla->num_cuentas].fecha_hora);
         tabla->num_cuentas++;
     }
     fclose(archivo);
