@@ -18,7 +18,6 @@ typedef struct
     char titular[50];
     float saldo;
     int num_transacciones;
-    char fecha
 } Cuenta;
 
 typedef struct
@@ -27,15 +26,22 @@ typedef struct
     int num_cuentas;
 } TablaCuentas;
 
-// Estructura del buffer
+#define TAM_BUFFER 6
+
+#define SHM_BUFFER 3456
+
 typedef struct {
-    Cuenta operaciones[10];
+    Cuenta operaciones[TAM_BUFFER];
     int inicio;
     int fin;
     pthread_mutex_t mutex;
 } BufferEstructurado;
 
-extern TablaCuentas tablaCuentas;
+// Declaración del buffer global
 extern BufferEstructurado buffer;
+
+
+
+extern TablaCuentas tablaCuentas;
 
 #endif //USUARIOS_H

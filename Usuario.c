@@ -28,24 +28,19 @@
 #include <errno.h>
 #include <sys/shm.h>
 
-
-
-//variables globales
+// variables globales
 sem_t *semaforo_transacciones;
 
 // Definimos un mutex para controlar las operaciones que realizan los usuarios
 pthread_mutex_t mutex_u = PTHREAD_MUTEX_INITIALIZER;
-
 
 typedef struct
 {
     const char *archivoLog;
     TablaCuentas *tabla;
     int posicionCuenta;
+    BufferEstructurado *buffer;
 } ArgsHilo;
-
-// Escribir en buffer
-
 
 void ObtenerFechaHora(char *buffer, size_t bufferSize)
 {
@@ -72,12 +67,6 @@ void EscribirEnLog(const char *mensaje, const char *archivoLog)
     fclose(archivo);
 }
 
-void actualizar_buffer(Cuenta cuenta) {
-    pthread_mutex_lock(&buffer.mutex);
-    
-    pthread_mutex_unlock(&buffer.mutex);
-}
-
 // Depositar dinero en la cuenta, usándo semáforos para los hilos y guardando las modificaciones en el archivo
 void *Depositar(void *arg)
 {
@@ -102,8 +91,6 @@ void *Depositar(void *arg)
     args->tabla->cuenta[args->posicionCuenta].saldo += cantidad;
     args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
 
-
-
     // Escribimos en el log
     // Usamos semaforo para controlar el acceso
     sem_wait(semaforo_transacciones);
@@ -114,6 +101,29 @@ void *Depositar(void *arg)
     fclose(log);
     sem_post(semaforo_transacciones);
 
+    pthread_mutex_lock(&args->buffer->mutex);
+
+    // Comprobar si el buffer está lleno antes de insertar
+    int siguienteFin = (args->buffer->fin + 1) % TAM_BUFFER;
+    if (siguienteFin == args->buffer->inicio)
+    {
+        printf("Buffer lleno, no se puede insertar la operación\n");
+    }
+    else
+    {
+        int posicionGuardada = args->buffer->fin;
+
+        // Insertar elemento en la posición fin
+        args->buffer->operaciones[posicionGuardada] = args->tabla->cuenta[args->posicionCuenta];
+
+        // Avanzar fin
+        args->buffer->fin = siguienteFin;
+
+        printf("Elemento insertado en la posición %d del buffer\n", posicionGuardada);
+        printf("inicio = %d, fin = %d\n", args->buffer->inicio, args->buffer->fin);
+    }
+
+    pthread_mutex_unlock(&args->buffer->mutex);
 
     printf("Deposito realizado con éxito. Nuevo saldo: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
 
@@ -152,7 +162,6 @@ void *Retirar(void *arg)
         args->tabla->cuenta[args->posicionCuenta].saldo -= cantidad;
         args->tabla->cuenta[args->posicionCuenta].num_transacciones++;
 
-
         // escribimos en el log
         // Semaforo para controlar el acceso
         sem_wait(semaforo_transacciones);
@@ -162,10 +171,32 @@ void *Retirar(void *arg)
         FILE *log = fopen(rutaLog, "a");
         fprintf(log, "[%s] Retiro: -%.2f\n", FechaHora, cantidad);
         fclose(log);
+        pthread_mutex_lock(&args->buffer->mutex);
+
+        // Guardar posición actual
+        int posicionGuardada = args->buffer->fin;
+
+        // Insertar elemento en esa posición
+        args->buffer->operaciones[posicionGuardada] = args->tabla->cuenta[args->posicionCuenta];
+
+        // Incrementar el índice fin del buffer circular
+        args->buffer->fin = (args->buffer->fin + 1) % TAM_BUFFER;
+
+        // Comprobar si el buffer está lleno (fin == inicio)
+        if (args->buffer->fin == args->buffer->inicio)
+        {
+            printf("Buffer lleno después de insertar en la posición %d\n", posicionGuardada);
+        }
+        else
+        {
+            printf("Elemento insertado en la posición %d del buffer\n", posicionGuardada);
+            printf("inicio = %d, fin = %d\n", args->buffer->inicio, args->buffer->fin);
+        }
+
+        pthread_mutex_unlock(&args->buffer->mutex);
         printf("Retiro realizado con éxito. Nuevo saldo: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
 
         sem_post(semaforo_transacciones);
-        
     }
     else
     {
@@ -186,8 +217,6 @@ void *ConsultarSaldo(void *arg)
 
     ArgsHilo *args = (ArgsHilo *)arg;
     printf("Saldo actual: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
-
-
 
     // Desbloqueamos el mutex
     pthread_mutex_unlock(&mutex_u);
@@ -251,10 +280,6 @@ void *Transferencia(void *arg)
         args->tabla->cuenta[posicionCuentaDestino].saldo += cantidad;
         args->tabla->cuenta[posicionCuentaDestino].num_transacciones++;
 
-        //Actualizamos la cuenta
-        actualizar_cuenta(args->tabla->cuenta[args->posicionCuenta]);
-
-
         // Escribimos en el log de la cuenta origen
         // Usamos semaforo para controlar el acceso al log
         sem_wait(semaforo_transacciones);
@@ -265,12 +290,40 @@ void *Transferencia(void *arg)
         fclose(log);
         sem_post(semaforo_transacciones);
 
+        // Guardar en buffer la cuenta origen y la cuenta destino
+        pthread_mutex_lock(&args->buffer->mutex);
+
+        // Inserción para cuenta origen
+        int pos = args->buffer->fin;
+        args->buffer->operaciones[pos] = args->tabla->cuenta[args->posicionCuenta];
+        args->buffer->fin = (args->buffer->fin + 1) % TAM_BUFFER;
+
+        if (args->buffer->fin == args->buffer->inicio)
+            printf("Buffer lleno después de insertar en la posición %d\n", pos);
+        else
+            printf("Elemento insertado en la posición %d del buffer (cuenta origen)\n", pos);
+        printf("inicio = %d, fin = %d\n", args->buffer->inicio, args->buffer->fin);
+
+        // Inserción para cuenta destino
+        pos = args->buffer->fin;
+        args->buffer->operaciones[pos] = args->tabla->cuenta[posicionCuentaDestino];
+        args->buffer->fin = (args->buffer->fin + 1) % TAM_BUFFER;
+
+        if (args->buffer->fin == args->buffer->inicio)
+            printf("Buffer lleno después de insertar en la posición %d\n", pos);
+        else
+            printf("Elemento insertado en la posición %d del buffer (cuenta destino)\n", pos);
+        pthread_mutex_unlock(&args->buffer->mutex);
+
         printf("Transferencia realizada con éxito. Nuevo saldo: %.2f\n", args->tabla->cuenta[args->posicionCuenta].saldo);
+        pthread_mutex_unlock(&mutex_u);
     }
     else
     {
         printf("Fondos insuficientes\n");
     }
+    // Desbloqueamos el mutex
+    return NULL;
 }
 
 void *MostrarMenuUsuario()
@@ -284,12 +337,6 @@ void *MostrarMenuUsuario()
     printf("|             5. Salir                 |\n");
     printf("+--------------------------------------+\n");
     printf("\nSeleccione una opción: ");
-}
-
-// Para conseguir el pid de la terminal actual
-pid_t get_terminal_pid()
-{
-    return getppid(); // devuelve el ppid del padre
 }
 
 int main(int argc, char *argv[])
@@ -307,6 +354,7 @@ int main(int argc, char *argv[])
     const char *archivoLog = argv[1];
     int shm_id = atoi(argv[2]);
     int PosicionCuenta = atoi(argv[3]);
+    int shm_buffer = atoi(argv[4]);
 
     // Variables
     char FechaInicioCuenta[148];
@@ -314,6 +362,7 @@ int main(int argc, char *argv[])
 
     // Asociar la memoria compartida
     TablaCuentas *tabla = (TablaCuentas *)shmat(shm_id, NULL, 0);
+    BufferEstructurado *buffer = (BufferEstructurado *)shmat(shm_buffer, NULL, 0);
 
     ObtenerFechaHora(FechaInicioCuenta, sizeof(FechaInicioCuenta));
     snprintf(MensajeDeInicio, sizeof(MensajeDeInicio), "[%s] Inicio de sesión de cuenta: %s\n", FechaInicioCuenta, argv[1]);
@@ -336,7 +385,7 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        ArgsHilo args = {archivoLog, tabla, PosicionCuenta};
+        ArgsHilo args = {archivoLog, tabla, PosicionCuenta, buffer};
 
         // Con las opciones creamos los hilos, y hacemos que esperen a que terminen
         switch (opcion)
@@ -371,7 +420,6 @@ int main(int argc, char *argv[])
             pid_t terminalPid = getppid();
             kill(terminalPid, SIGKILL);
             exit(EXIT_SUCCESS);
-
         default:
             printf("Opción no válida\n");
         }

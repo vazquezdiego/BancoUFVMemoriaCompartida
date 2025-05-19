@@ -9,7 +9,6 @@ typedef struct {
     int num_hilos;
     char archivo_cuentas[50];
     char archivo_log[50];
-    char archivo_transacciones[50];
     char ruta_usuario[100];
     char ruta_crearusuario[100];
     char ruta_monitor[100];

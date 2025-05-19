@@ -8,94 +8,123 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #define MAX_TEXT 512
+#define PATH_SIZE 1024
 
-int main(int argc, char *argv[])
-{
+void procesarArchivo(const char *ruta, int UmbralRetiros, int UmbralTransferencias, const char *cuenta) {
+    FILE *file = fopen(ruta, "r");
+    if (file == NULL) {
+        perror("Error al abrir archivo de transacciones");
+        return;
+    }
+
+    char linea[MAX_TEXT];
+    char TipoOperacion[20];
+    char TipoOperacionAnterior[20] = "";
+    int ContadorRetiros = 0;
+    int ContadorTransferencias = 0;
+
+    while (fgets(linea, sizeof(linea), file) != NULL) {
+        if (sscanf(linea, "[%*[^]]] %19[^:]", TipoOperacion) == 1) {
+            if (strcmp(TipoOperacion, "Retiro") == 0) {
+                // ... (lógica original de retiros)
+                if (ContadorRetiros >= UmbralRetiros) {
+                    char mensaje[MAX_TEXT];
+                    snprintf(mensaje, sizeof(mensaje), 
+                            "ALERTA [Cuenta %s]: %d Retiros consecutivos\n", 
+                            cuenta, ContadorRetiros);
+                    int fd = open("../../fifo_bancoMonitor", O_WRONLY);
+                    if (fd != -1) {
+                        write(fd, mensaje, strlen(mensaje) + 1);
+                        close(fd);
+                    } else {
+                        perror("Error al abrir fifo_bancoMonitor");
+                    }
+                    // ... (envío por FIFO)
+                }
+            }
+            else if (strcmp(TipoOperacion, "Transferencia") == 0) {
+                if (strcmp(TipoOperacionAnterior, "Transferencia") == 0)
+                    ContadorTransferencias++;
+                else
+                    ContadorTransferencias = 1;
+
+                strcpy(TipoOperacionAnterior, "Transferencia");
+
+                if (ContadorTransferencias >= UmbralTransferencias) {
+                    char mensaje[MAX_TEXT];
+                    snprintf(mensaje, sizeof(mensaje),
+                             "ALERTA [Cuenta %s]: %d Transferencias consecutivas\n",
+                             cuenta, ContadorTransferencias);
+                            int fd = open("../../fifo_bancoMonitor", O_WRONLY);
+                            if (fd != -1) {
+                                write(fd, mensaje, strlen(mensaje) + 1);
+                                close(fd);
+                            } else {
+                                perror("Error al abrir fifo_bancoMonitor");
+                            }
+                }
+            } else {
+                // Otro tipo de operación: reiniciar contadores
+                ContadorRetiros = 0;
+                ContadorTransferencias = 0;
+                strcpy(TipoOperacionAnterior, "");
+            }
+
+        }
+    }
+    fclose(file);
+}
+
+int main(int argc, char *argv[]) {
     if (argc < 4) {
-        fprintf(stderr, "Uso: %s <UmbralRetiros> <UmbralTransferencias> <archivoTransacciones>\n", argv[0]);
+        fprintf(stderr, "Uso: %s <UmbralRetiros> <UmbralTransferencias> <carpetaTransacciones>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
+    printf("Monitor iniciado...\n");
+
     int UmbralRetiros = atoi(argv[1]);
     int UmbralTransferencias = atoi(argv[2]);
-    const char *archivoTransacciones = argv[3];
 
     while (1) {
-        FILE *file = fopen(archivoTransacciones, "r");
-        if (file == NULL) {
-            perror("Error al abrir el archivo de transacciones");
+        DIR *dir = opendir("transacciones");
+        if (!dir) {
+            perror("Error al abrir carpeta de transacciones");
             sleep(60);
-            continue; // Vuelve a intentarlo en el siguiente ciclo
+            continue;
         }
 
-        char linea[MAX_TEXT];
-        char TipoOperacion[20];
-        char TipoOperacionAnterior[20] = "";
-        int ContadorRetiros = 0;
-        int ContadorTransferencias = 0;
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL) { // Corrección en la condición
+            char path[PATH_SIZE];
+            struct stat st;
 
-        while (fgets(linea, sizeof(linea), file) != NULL)
-        {
-            if (sscanf(linea, "[%*[^]]] %[^:]:", TipoOperacion) == 1)
-            {
-                if (strcmp(TipoOperacion, "Retiro") == 0)
-                {
-                    if (strcmp(TipoOperacionAnterior, "Retiro") == 0)
-                        ContadorRetiros++;
-                    else
-                        ContadorRetiros = 1;
+            // Ignorar directorios "." y ".."
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                continue;
+            }
 
-                    strcpy(TipoOperacionAnterior, "Retiro");
+            snprintf(path, sizeof(path), "transacciones/%s", entry->d_name);
 
-                    if (ContadorRetiros >= UmbralRetiros)
-                    {
-                        char mensaje[MAX_TEXT];
-                        snprintf(mensaje, sizeof(mensaje), "ALERTA: Se han realizado %d Retiros consecutivos.\n", ContadorRetiros);
-                        int fd = open("../../fifo_bancoMonitor", O_WRONLY);
-                        if (fd != -1) {
-                            write(fd, mensaje, strlen(mensaje) + 1);
-                            close(fd);
-                        } else {
-                            perror("Error al abrir fifo_bancoMonitor");
-                        }
-                    }
-                }
-                else if (strcmp(TipoOperacion, "Transferencia") == 0)
-                {
-                    if (strcmp(TipoOperacionAnterior, "Transferencia") == 0)
-                        ContadorTransferencias++;
-                    else
-                        ContadorTransferencias = 1;
+            // Verificar si es un directorio usando stat()
+            if (stat(path, &st) == -1) {
+                continue;
+            }
 
-                    strcpy(TipoOperacionAnterior, "Transferencia");
+            if (S_ISDIR(st.st_mode)) { // Usar stat en lugar de d_type
+                snprintf(path, sizeof(path), "transacciones/%s/transacciones.log", entry->d_name);
 
-                    if (ContadorTransferencias >= UmbralTransferencias)
-                    {
-                        char mensaje[MAX_TEXT];
-                        snprintf(mensaje, sizeof(mensaje), "ALERTA: Se han realizado %d Transferencias consecutivas.\n", ContadorTransferencias);
-                        int fd = open("../../fifo_bancoMonitor", O_WRONLY);
-                        if (fd != -1) {
-                            write(fd, mensaje, strlen(mensaje) + 1);
-                            close(fd);
-                        } else {
-                            perror("Error al abrir fifo_bancoMonitor");
-                        }
-                    }
-                }
-                else
-                {
-                    // Otro tipo de operación: reiniciar contadores
-                    ContadorRetiros = 0;
-                    ContadorTransferencias = 0;
-                    strcpy(TipoOperacionAnterior, "");
+                if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
+                    procesarArchivo(path, UmbralRetiros, UmbralTransferencias, entry->d_name);
                 }
             }
         }
-
-        fclose(file);
-        sleep(60); // Esperar 60 segundos antes del próximo chequeo
+        closedir(dir);
+        sleep(60);
     }
 
     return 0;

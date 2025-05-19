@@ -3,15 +3,6 @@
 //  Descripción: El programa principal, Banco.c, es el encargado de gestionar la creación de usuarios y la interacción con el monitor.
 //
 //
-// Funciones:
-// - EscribirEnLog(const char *mensaje): Abre un archivo de log y escribe el mensaje proporcionado al final de este archivo
-// - ObtenerFechaHora(char *buffer, size_t bufferSize): Obtiene la fecha y hora actuales
-// - leer_configuracion(const char *ruta): Lee la configuración desde un archivo de texto y devuelve una estructura Config
-// - verificarUsuario(const char *archivoLectura, int IdCuenta): Verifica si un usuario existe en el archivo de cuentas
-// - MostrarMonitor(void *arg): Crea un proceso hijo que ejecuta el monitor en una nueva terminal
-// - MostrarMenu(void *arg): Muestra el menú principal del banco y gestiona la creación de usuarios y la conexión de usuarios existentes
-// - EscucharTuberiaMonitor(void *arg): Escucha mensajes de una tubería FIFO y los muestra en la consola
-// - main(): Función principal que inicializa la configuración, crea las tuberías y los hilos, y gestiona el flujo del programa
 //
 // +------------------------------------------------------------------------------------------------------------------------------------------------+/
 
@@ -40,46 +31,97 @@
 #include "Monitor.h"
 #include "Usuarios.h"
 
-
-
 // Variables globales
 Config configuracion;
 Cuenta cuenta;
 TablaCuentas tablaCuentas;
-BufferEstructurado buffer = {
-    .inicio = 0,
-    .fin = 0,
-    .mutex = PTHREAD_MUTEX_INITIALIZER
-};
+BufferEstructurado buffer;
 
-
-// Función del hilo que gestiona las escrituras asíncronas al disco
-void *gestionar_entrada_salida(void *arg) {
-    while (1) {
-        pthread_mutex_lock(&buffer.mutex);
-        if (buffer.inicio != buffer.fin) {
-            Cuenta op = buffer.operaciones[buffer.inicio];
-            buffer.inicio = (buffer.inicio + 1) % 10;
-            pthread_mutex_unlock(&buffer.mutex);
-
-            FILE *archivo = fopen(configuracion.archivo_cuentas, "rb+");
-            if (archivo) {
-                // Suponiendo que el número de cuenta se usa para posición en archivo
-                fseek(archivo, op.numero_cuenta * sizeof(Cuenta), SEEK_SET);
-                fwrite(&op, sizeof(Cuenta), 1, archivo);
-                fclose(archivo);
-            } else {
-                // Manejar error si archivo no se puede abrir
-                perror("Error al abrir archivo cuentas.dat en gestionar_entrada_salida");
-            }
-        } else {
-            pthread_mutex_unlock(&buffer.mutex);
-            usleep(100000); // 100ms para no consumir CPU excesivamente
-        }
+void *gestionar_buffer(void *arg)
+{
+    int shm_id = shmget(SHM_BUFFER, sizeof(BufferEstructurado), 0666);
+    BufferEstructurado *buffer = (BufferEstructurado *)shmat(shm_id, NULL, 0);
+    if (buffer == (void *)-1)
+    {
+        perror("Error mapeando memoria compartida del buffer en gestionar_buffer");
+        pthread_exit(NULL);
     }
+
+    while (1)
+    {
+        pthread_mutex_lock(&buffer->mutex);
+
+        if (buffer->inicio == buffer->fin)
+        {
+            pthread_mutex_unlock(&buffer->mutex);
+            usleep(10000); // 10ms de espera activa
+            continue;
+        }
+
+        Cuenta cuenta_actualizada = buffer->operaciones[buffer->inicio];
+        buffer->inicio = (buffer->inicio + 1) % TAM_BUFFER;
+
+        pthread_mutex_unlock(&buffer->mutex);
+
+        // Ahora abrimos el archivo de texto y reescribimos la cuenta modificada
+
+        FILE *archivo = fopen("cuentas.txt", "r");
+        if (archivo == NULL)
+        {
+            perror("Error abriendo cuentas.txt");
+            continue;
+        }
+
+        // Leer todas las líneas en memoria
+        char lineas[1000][256]; // Ajustar según máximo esperado
+        int num_lineas = 0;
+        while (fgets(lineas[num_lineas], sizeof(lineas[num_lineas]), archivo))
+        {
+            num_lineas++;
+        }
+        fclose(archivo);
+
+        // Abrir archivo para escribir (sobrescribir)
+        archivo = fopen("cuentas.txt", "w");
+        if (archivo == NULL)
+        {
+            perror("Error abriendo cuentas.txt para escritura");
+            continue;
+        }
+
+        for (int i = 0; i < num_lineas; i++)
+        {
+            int numero_cuenta;
+            char titular[100];
+            float saldo;
+            int num_transacciones;
+
+            // Parsear línea
+            if (sscanf(lineas[i], "%d,%[^,],%f,%d", &numero_cuenta, titular, &saldo, &num_transacciones) == 4)
+            {
+                if (numero_cuenta == cuenta_actualizada.numero_cuenta)
+                {
+                    // Reescribir con datos actualizados
+                    fprintf(archivo, "%d,%s,%.2f,%d\n", cuenta_actualizada.numero_cuenta, cuenta_actualizada.titular, cuenta_actualizada.saldo, cuenta_actualizada.num_transacciones);
+                }
+                else
+                {
+                    // Reescribir línea original
+                    fprintf(archivo, "%s", lineas[i]);
+                }
+            }
+            else
+            {
+                // Si no se pudo parsear, escribir línea original
+                fprintf(archivo, "%s", lineas[i]);
+            }
+        }
+
+        fclose(archivo);
+    }
+
     return NULL;
 }
-
 
 void EscribirEnLog(const char *mensaje)
 {
@@ -162,7 +204,7 @@ void *MostrarMonitor(void *arg)
     {
         const char *rutaMonitor = configuracion.ruta_monitor;
         char comandoMonitor[512];
-        snprintf(comandoMonitor, sizeof(comandoMonitor), "%s %d %d %s", rutaMonitor, configuracion.umbral_retiros, configuracion.umbral_transferencias, configuracion.archivo_transacciones);
+        snprintf(comandoMonitor, sizeof(comandoMonitor), "%s %d %d", rutaMonitor, configuracion.umbral_retiros, configuracion.umbral_transferencias);
         // Ejecutar gnome-terminal con el comando
         execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoMonitor, NULL);
     }
@@ -183,6 +225,9 @@ void *MostrarMenu(void *arg)
     pid_t pidUsuario;      // El pidUsuario
     pid_t pidCrearUsuario; // Variable for creating user process
     const char *titularCuenta;
+
+    // Accedemos a la memoria de buffer
+    int shm_buffer = shmget(SHM_BUFFER, sizeof(BufferEstructurado), 0666);
 
     // Accedemos a la memoria compartida
     int shm_id = shmget(SHM_KEY, sizeof(TablaCuentas), 0666);
@@ -221,7 +266,8 @@ void *MostrarMenu(void *arg)
                     cuentaExistente = true;
                     break;
                 }
-                else{
+                else
+                {
                     cuentaExistente = false;
                 }
             }
@@ -245,7 +291,7 @@ void *MostrarMenu(void *arg)
 
                     // Construcción del comando con pausa al final
                     char comandoUsuario[512];
-                    snprintf(comandoUsuario, sizeof(comandoUsuario), "\"%s\" \"%s\" \"%d\" \"%d\"; exit", rutaUsuario, configuracion.archivo_log, shm_id, PosicionCuenta);
+                    snprintf(comandoUsuario, sizeof(comandoUsuario), "\"%s\" \"%s\" \"%d\" \"%d\" \"%d\"; exit", rutaUsuario, configuracion.archivo_log, shm_id, PosicionCuenta, shm_buffer);
 
                     // Ejecutar gnome-terminal con el comando
                     execlp("gnome-terminal", "gnome-terminal", "--", "bash", "-c", comandoUsuario, NULL);
@@ -292,7 +338,6 @@ void *MostrarMenu(void *arg)
     } while (numeroCuenta != 1);
 }
 
-
 void *EscucharTuberiaMonitor(void *arg)
 {
     int fdBancoMonitor;
@@ -325,19 +370,15 @@ void *EscucharTuberiaMonitor(void *arg)
 
 int main()
 {
-    pthread_t hilo_menu, hilo_pipes, hilo_monitor, hilo_escuchar, hilo_entrada_salida;
+    pthread_t hilo_menu, hilo_pipes, hilo_monitor, hilo_escuchar, hilo_buffer;
     configuracion = leer_configuracion("config.txt");
 
     // Inicializamos las cuentas
     InitCuentas(configuracion.archivo_cuentas);
 
-    // Inicializamos el buffer
-    pthread_mutex_init(&buffer.mutex, NULL);
-    buffer.inicio = 0;
-    buffer.fin = 0;
-
     char linea[256];
     int id_shmem;
+    int id_buffer;
 
     id_shmem = shmget(SHM_KEY, sizeof(TablaCuentas), IPC_CREAT | 0666);
     if (id_shmem == -1)
@@ -345,6 +386,30 @@ int main()
         perror("Error al crear la memoria compartida");
         exit(1);
     }
+
+    id_buffer = shmget(SHM_BUFFER, sizeof(BufferEstructurado), IPC_CREAT | 0666);
+    if (id_buffer == -1)
+    {
+        perror("Error al crear el segmento de memoria compartida del buffer");
+        exit(EXIT_FAILURE);
+    }
+
+    BufferEstructurado *buffer = (BufferEstructurado *)shmat(id_buffer, NULL, 0);
+    if (buffer == (void *)-1)
+    {
+        perror("Error al mapear el segmento de memoria compartida del buffer");
+        exit(EXIT_FAILURE);
+    }
+
+    // Inicialización del buffer
+    buffer->inicio = 0;
+    buffer->fin = 0;
+
+    // Inicialización del mutex como compartido entre procesos
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+    pthread_mutex_init(&buffer->mutex, &attr);
 
     TablaCuentas *tabla = (TablaCuentas *)shmat(id_shmem, NULL, 0);
     tabla->num_cuentas = 0;
@@ -358,22 +423,19 @@ int main()
     fclose(archivo);
 
     // Tuberias
-   if (mkfifo("fifo_bancoMonitor", 0666) == -1 && errno != EEXIST)
+    if (mkfifo("fifo_bancoMonitor", 0666) == -1 && errno != EEXIST)
     {
         EscribirEnLog("Error al crear la tubería");
         exit(EXIT_FAILURE);
     }
 
-    // Crear los hilos
-    pthread_create(&hilo_entrada_salida, NULL, gestionar_entrada_salida, NULL);
     pthread_create(&hilo_escuchar, NULL, EscucharTuberiaMonitor, NULL);
     pthread_create(&hilo_menu, NULL, MostrarMenu, NULL);
     pthread_create(&hilo_monitor, NULL, MostrarMonitor, NULL);
+    pthread_create(&hilo_buffer, NULL, gestionar_buffer, NULL);
 
     pthread_join(hilo_menu, NULL);
-    pthread_join(hilo_monitor, NULL);
     pthread_join(hilo_escuchar, NULL);
-
 
     return 0;
 }
