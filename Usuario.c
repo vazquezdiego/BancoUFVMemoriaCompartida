@@ -322,7 +322,7 @@ void *Transferencia(void *arg)
             printf("Buffer lleno después de insertar en la posición %d\n", pos);
         else
             printf("Elemento insertado en la posición %d del buffer (cuenta origen)\n", pos);
-        printf("inicio = %d, fin = %d\n", args->buffer->inicio, args->buffer->fin);
+
 
         // Inserción para cuenta destino
         pos = args->buffer->fin;
